@@ -24,6 +24,11 @@ services:
       JAVA_TOOL_OPTIONS: -Dgit.timeout=30000
     ports:
       - "8888:8888"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8888/auth-server/default" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     restart: unless-stopped
 
   eureka-server:
@@ -39,7 +44,8 @@ services:
     ports:
       - "8761:8761"
     depends_on:
-      - config-server
+      config-server:
+        condition: service_healthy
     restart: unless-stopped
 
   auth-server:
@@ -52,14 +58,18 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       EUREKA_URL: http://eureka-server:8761/eureka/
       JAVA_TOOL_OPTIONS: -Dspring.profiles.active=default
     ports:
       - "8081:8081"
     depends_on:
-      - config-server
-      - eureka-server
-      - postgres-db # Czekamy aż baza wystartuje
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+      postgres-db:
+        condition: service_started
     restart: unless-stopped
 
   watermark-service:
@@ -73,8 +83,10 @@ services:
     ports:
       - "8082:8082"
     depends_on:
-      - config-server
-      - eureka-server
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
     restart: unless-stopped
 
   watermark-client:
@@ -88,10 +100,14 @@ services:
     ports:
       - "8083:8083"
     depends_on:
-      - config-server
-      - eureka-server
-      - watermark-service
-      - auth-server
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+      watermark-service:
+        condition: service_started
+      auth-server:
+        condition: service_started
     restart: unless-stopped
 
   sonarqube-db:
