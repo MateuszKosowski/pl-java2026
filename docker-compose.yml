@@ -1,4 +1,17 @@
 services:
+  postgres-db:
+    image: postgres:17
+    container_name: postgres-db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   config-server:
     build:
       context: .
@@ -43,6 +56,7 @@ services:
     depends_on:
       - config-server
       - eureka-server
+      - postgres-db
     restart: unless-stopped
 
   watermark-service:
@@ -144,4 +158,5 @@ volumes:
   sonarqube_extensions:
   sonarqube_logs:
   gradle_cache:
+  postgres_db_data:
 
