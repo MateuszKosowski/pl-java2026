@@ -1,4 +1,4 @@
-package pl.zzpj.auth_server.config;
+package pl.zzpj.auth_server.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
