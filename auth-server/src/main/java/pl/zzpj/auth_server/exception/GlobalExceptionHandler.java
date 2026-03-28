@@ -30,4 +30,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body("Invalid JSON format or unknown properties in request.");
     }
+
+    @ExceptionHandler({BadCredentialsException.class, EmailNotFoundException.class})
+    public ResponseEntity<String> handleAuthenticationErrors(Exception ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body("Invalid email or password.");
+    }
 }

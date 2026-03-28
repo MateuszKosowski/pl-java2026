@@ -20,4 +20,11 @@ public class JwtService {
                 .signWith(Keys.hmacShaKeyFor(secretKey.getBytes()))
                 .compact();
     }
+
+    public void validateToken(String token) {
+        Jwts.parser()
+                .verifyWith(Keys.hmacShaKeyFor(secretKey.getBytes()))
+                .build()
+                .parseSignedClaims(token);
+    }
 }

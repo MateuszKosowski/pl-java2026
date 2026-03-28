@@ -5,10 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import pl.zzpj.auth_server.dto.LoginRequest;
 import pl.zzpj.auth_server.dto.LoginResponse;
 import pl.zzpj.auth_server.repository.UserRepository;
@@ -34,5 +31,15 @@ public class AuthController {
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid password");
                 })
                 .orElse(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User not found"));
+    }
+
+    @PostMapping("/validate")
+    public ResponseEntity<Boolean> validateToken(@RequestParam String token) {
+        try {
+            jwtService.validateToken(token);
+            return ResponseEntity.ok(true);
+        } catch (Exception e) {
+            return ResponseEntity.ok(false);
+        }
     }
 }
