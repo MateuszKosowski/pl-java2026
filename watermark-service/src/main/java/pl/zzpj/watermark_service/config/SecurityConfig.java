@@ -2,14 +2,19 @@ package pl.zzpj.watermark_service.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
  * Defines the minimal security configuration required by the watermark API.
+ * Active only when the 'jwt' profile is NOT active (e.g. in tests).
  */
 @Configuration
+@EnableWebSecurity
+@Profile("!jwt")
 public class SecurityConfig {
 
     /**

@@ -1,6 +1,8 @@
 spring:
   application:
     name: watermark-service
+  profiles:
+    active: jwt
   config:
     import: "optional:configserver:http://localhost:8888"
   servlet:
