@@ -80,18 +80,18 @@ public class SteganographyService {
      *
      * @param file    uploaded source image
      * @param message text payload to embed
-     * @param ownerId owner identifier stored with the watermark
+     * @param ownerIdentity owner identifier stored with the watermark
      * @return generated PNG bytes containing the watermark
      */
-    public byte[] embedMessage(MultipartFile file, String message, String ownerId) {
-        validateOwnerId(ownerId);
+    public byte[] embedMessage(MultipartFile file, String message, String ownerIdentity) {
+        validateOwnerIdentity(ownerIdentity);
         validateMessage(message);
         try {
             BufferedImage image = readImage(file.getBytes());
-            log.info("Embedding watermark: ownerId={}, imageSize={}x{}, textLength={}",
-                    ownerId, image.getWidth(), image.getHeight(), message.length());
-            BufferedImage watermarked = embedMessage(image, message, ownerId);
-            log.info("Watermark embedded successfully for ownerId={}", ownerId);
+            log.info("Embedding watermark: ownerIdentity={}, imageSize={}x{}, textLength={}",
+                    ownerIdentity, image.getWidth(), image.getHeight(), message.length());
+            BufferedImage watermarked = embedMessage(image, message, ownerIdentity);
+            log.info("Watermark embedded successfully for ownerIdentity={}", ownerIdentity);
             return writePng(watermarked);
         } catch (IOException e) {
             throw new IllegalArgumentException("Could not embed watermark into image", e);
@@ -109,9 +109,9 @@ public class SteganographyService {
             BufferedImage image = readImage(file.getBytes());
             log.info("Detecting watermark: imageSize={}x{}", image.getWidth(), image.getHeight());
             DetectWatermarkResponse response = detectWatermark(image)
-                    .map(envelope -> new DetectWatermarkResponse(true, envelope.ownerId(), envelope.version()))
+                    .map(envelope -> new DetectWatermarkResponse(true, envelope.ownerIdentity(), envelope.version()))
                     .orElseGet(() -> new DetectWatermarkResponse(false, null, null));
-            log.info("Detection result: watermarked={}, ownerId={}", response.watermarked(), response.ownerId());
+            log.info("Detection result: watermarked={}, ownerIdentity={}", response.watermarked(), response.ownerIdentity());
             return response;
         } catch (IOException e) {
             throw new IllegalArgumentException("Could not inspect image", e);
@@ -126,7 +126,7 @@ public class SteganographyService {
      * @return extracted watermark data
      */
     public ExtractedTextResponse extractMessage(MultipartFile file, String requesterId) {
-        validateOwnerId(requesterId);
+        validateOwnerIdentity(requesterId);
         try {
             BufferedImage image = readImage(file.getBytes());
             log.info("Extracting watermark: requesterId={}, imageSize={}x{}",
@@ -134,13 +134,13 @@ public class SteganographyService {
             WatermarkEnvelope envelope = detectWatermark(image)
                     .orElseThrow(() -> new IllegalArgumentException("No watermark found in this image"));
 
-            if (!envelope.ownerId().equals(requesterId)) {
+            if (!envelope.ownerIdentity().equals(requesterId)) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Requester is not allowed to read this watermark");
             }
 
-            String text = decryptOwnerPayload(envelope.ownerId(), envelope.ownerPayload());
-            log.info("Watermark extracted successfully for ownerId={}", envelope.ownerId());
-            return new ExtractedTextResponse(envelope.ownerId(), text);
+            String text = decryptOwnerPayload(envelope.ownerIdentity(), envelope.ownerPayload());
+            log.info("Watermark extracted successfully for ownerIdentity={}", envelope.ownerIdentity());
+            return new ExtractedTextResponse(envelope.ownerIdentity(), text);
         } catch (IOException e) {
             throw new IllegalArgumentException("Could not extract watermark from image", e);
         }
@@ -224,8 +224,8 @@ public class SteganographyService {
         return result;
     }
 
-    BufferedImage embedMessage(BufferedImage sourceImage, String message, String ownerId) {
-        byte[] appEnvelope = createApplicationEnvelope(ownerId, message);
+    BufferedImage embedMessage(BufferedImage sourceImage, String message, String ownerIdentity) {
+        byte[] appEnvelope = createApplicationEnvelope(ownerIdentity, message);
         int[] bits = encodeBytesToBits(appEnvelope);
         int requiredBlocks = bits.length * REDUNDANCY;
         WatermarkImageData imageData = WatermarkImageData.from(sourceImage);
@@ -237,7 +237,7 @@ public class SteganographyService {
         List<BlockCoordinates> blockCoordinates = shuffledBlocks(llBand);
 
         if (requiredBlocks > blockCoordinates.size()) {
-            int capacityChars = estimateTextCapacity(blockCoordinates.size(), ownerId);
+            int capacityChars = estimateTextCapacity(blockCoordinates.size(), ownerIdentity);
             throw new IllegalArgumentException(
                     "Message is too long for this image. Maximum text length for this image: ~" + capacityChars + " characters."
             );
@@ -292,9 +292,9 @@ public class SteganographyService {
 
     // ---- Validation ----
 
-    private void validateOwnerId(String ownerId) {
-        if (ownerId == null || ownerId.isBlank()) {
-            throw new IllegalArgumentException("Owner id must not be blank");
+    private void validateOwnerIdentity(String ownerIdentity) {
+        if (ownerIdentity == null || ownerIdentity.isBlank()) {
+            throw new IllegalArgumentException("Owner identity must not be blank");
         }
     }
 
@@ -325,10 +325,10 @@ public class SteganographyService {
         return outputStream.toByteArray();
     }
 
-    private int estimateTextCapacity(int totalBlocks, String ownerId) {
+    private int estimateTextCapacity(int totalBlocks, String ownerIdentity) {
         int availableBits = totalBlocks / REDUNDANCY;
         int availableBytes = availableBits / Byte.SIZE;
-        int ownerBytes = ownerId.getBytes(StandardCharsets.UTF_8).length;
+        int ownerBytes = ownerIdentity.getBytes(StandardCharsets.UTF_8).length;
         int envelopeOverhead = MAGIC.length + Integer.BYTES + Integer.BYTES + ownerBytes
                 + Integer.BYTES + GCM_IV_LENGTH + GCM_TAG_LENGTH / Byte.SIZE;
         int outerOverhead = Integer.BYTES + GCM_IV_LENGTH + GCM_TAG_LENGTH / Byte.SIZE;
@@ -429,9 +429,9 @@ public class SteganographyService {
 
     // ---- Envelope creation and parsing ----
 
-    private byte[] createApplicationEnvelope(String ownerId, String message) {
-        byte[] ownerBytes = ownerId.getBytes(StandardCharsets.UTF_8);
-        byte[] encryptedOwnerPayload = encryptOwnerPayload(ownerId, message);
+    private byte[] createApplicationEnvelope(String ownerIdentity, String message) {
+        byte[] ownerBytes = ownerIdentity.getBytes(StandardCharsets.UTF_8);
+        byte[] encryptedOwnerPayload = encryptOwnerPayload(ownerIdentity, message);
         ByteBuffer plainPayload = ByteBuffer.allocate(
                 MAGIC.length + Integer.BYTES + Integer.BYTES + ownerBytes.length + Integer.BYTES + encryptedOwnerPayload.length
         );
@@ -471,14 +471,14 @@ public class SteganographyService {
         }
 
         int version = payloadBuffer.getInt();
-        int ownerIdLength = payloadBuffer.getInt();
-        if (ownerIdLength <= 0 || ownerIdLength > payloadBuffer.remaining()) {
+        int ownerIdentityLength = payloadBuffer.getInt();
+        if (ownerIdentityLength <= 0 || ownerIdentityLength > payloadBuffer.remaining()) {
             throw new IllegalArgumentException("Watermark owner identifier is invalid");
         }
 
-        byte[] ownerIdBytes = new byte[ownerIdLength];
-        payloadBuffer.get(ownerIdBytes);
-        String ownerId = new String(ownerIdBytes, StandardCharsets.UTF_8);
+        byte[] ownerIdentityBytes = new byte[ownerIdentityLength];
+        payloadBuffer.get(ownerIdentityBytes);
+        String ownerIdentity = new String(ownerIdentityBytes, StandardCharsets.UTF_8);
 
         int ownerPayloadLength = payloadBuffer.getInt();
         if (ownerPayloadLength <= GCM_IV_LENGTH || ownerPayloadLength > payloadBuffer.remaining()) {
@@ -488,20 +488,20 @@ public class SteganographyService {
         byte[] ownerPayload = new byte[ownerPayloadLength];
         payloadBuffer.get(ownerPayload);
 
-        return new WatermarkEnvelope(version, ownerId, ownerPayload);
+        return new WatermarkEnvelope(version, ownerIdentity, ownerPayload);
     }
 
     // ---- Encryption ----
 
-    private byte[] encryptOwnerPayload(String ownerId, String message) {
+    private byte[] encryptOwnerPayload(String ownerIdentity, String message) {
         return encryptWithKey(
                 message.getBytes(StandardCharsets.UTF_8),
-                deriveOwnerAesKey(ownerId)
+                deriveOwnerAesKey(ownerIdentity)
         );
     }
 
-    private String decryptOwnerPayload(String ownerId, byte[] payload) {
-        byte[] plainBytes = decryptWithKey(payload, deriveOwnerAesKey(ownerId), "owner payload");
+    private String decryptOwnerPayload(String ownerIdentity, byte[] payload) {
+        byte[] plainBytes = decryptWithKey(payload, deriveOwnerAesKey(ownerIdentity), "owner payload");
         return new String(plainBytes, StandardCharsets.UTF_8);
     }
 
@@ -546,8 +546,8 @@ public class SteganographyService {
         return new SecretKeySpec(first16Bytes(sha256(("app:" + appKey).getBytes(StandardCharsets.UTF_8))), "AES");
     }
 
-    private SecretKeySpec deriveOwnerAesKey(String ownerId) {
-        return new SecretKeySpec(first16Bytes(sha256(("owner:" + ownerId + ":" + appKey).getBytes(StandardCharsets.UTF_8))), "AES");
+    private SecretKeySpec deriveOwnerAesKey(String ownerIdentity) {
+        return new SecretKeySpec(first16Bytes(sha256(("owner:" + ownerIdentity + ":" + appKey).getBytes(StandardCharsets.UTF_8))), "AES");
     }
 
     private byte[] first16Bytes(byte[] bytes) {
@@ -720,7 +720,7 @@ public class SteganographyService {
     private record BlockCoordinates(int row, int column) {
     }
 
-    private record WatermarkEnvelope(int version, String ownerId, byte[] ownerPayload) {
+    private record WatermarkEnvelope(int version, String ownerIdentity, byte[] ownerPayload) {
     }
 
     private record WatermarkImageData(int width, int height, double[][] luminance, int[][] rgb) {

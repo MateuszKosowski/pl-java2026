@@ -54,7 +54,7 @@ class ApplicationTests {
         byte[] embeddedImage = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Hello StegoCloud")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_PNG))
                 .andReturn()
@@ -71,7 +71,7 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "embedded.png", MediaType.IMAGE_PNG_VALUE, embeddedImage)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerId").value(OWNER_ID))
+                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID))
                 .andExpect(jsonPath("$.version").value(3));
 
         mockMvc.perform(multipart("/api/watermark/extract")
@@ -79,7 +79,7 @@ class ApplicationTests {
                         .param("requesterId", OWNER_ID))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ownerId").value(OWNER_ID))
+                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID))
                 .andExpect(jsonPath("$.text").value("Hello StegoCloud"));
     }
 
@@ -90,7 +90,7 @@ class ApplicationTests {
         byte[] embeddedImage = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Hello StegoCloud")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -111,7 +111,7 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "plain.png", MediaType.IMAGE_PNG_VALUE, sourceImage)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(false))
-                .andExpect(jsonPath("$.ownerId").doesNotExist())
+                .andExpect(jsonPath("$.ownerIdentityentity").doesNotExist())
                 .andExpect(jsonPath("$.version").doesNotExist());
     }
 
@@ -122,7 +122,7 @@ class ApplicationTests {
         byte[] embeddedImage = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "odd.png", MediaType.IMAGE_PNG_VALUE, oddImage))
                         .param("text", "Hello StegoCloud")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_PNG))
                 .andReturn()
@@ -148,7 +148,7 @@ class ApplicationTests {
         mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "small.png", MediaType.IMAGE_PNG_VALUE, smallImage))
                         .param("text", "Hello StegoCloud")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("Message is too long for this image")));
     }
@@ -172,7 +172,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "JPEG test")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -184,7 +184,7 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpegBytes)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerId").value(OWNER_ID));
+                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpegBytes))
@@ -201,7 +201,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Size test")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -213,7 +213,7 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpegBytes)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerId").value(OWNER_ID));
+                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpegBytes))
@@ -229,7 +229,7 @@ class ApplicationTests {
         byte[] embeddedImage = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Visualize test")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -282,7 +282,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Double JPEG")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -295,7 +295,7 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg2)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerId").value(OWNER_ID));
+                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg2))
@@ -324,17 +324,17 @@ class ApplicationTests {
         int successCount = 0;
 
         for (int i = 0; i < imageCount; i++) {
-            String ownerId = users[random.nextInt(userCount)];
+            String ownerIdentityentity = users[random.nextInt(userCount)];
             int size = imageSizes[random.nextInt(imageSizes.length)];
             float quality = jpegQualities[random.nextInt(jpegQualities.length)];
-            String text = "img-" + i + "-owner-" + ownerId;
+            String text = "img-" + i + "-owner-" + ownerIdentityentity;
 
             byte[] sourceImage = createTestImage(size, size);
 
             byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                             .file(new MockMultipartFile("image", "img" + i + ".png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                             .param("text", text)
-                            .param("ownerId", ownerId))
+                            .param("ownerIdentityentity", ownerIdentityentity))
                     .andExpect(status().isOk())
                     .andReturn()
                     .getResponse()
@@ -346,16 +346,16 @@ class ApplicationTests {
                             .file(new MockMultipartFile("image", "img" + i + ".jpg", MediaType.IMAGE_JPEG_VALUE, jpeg)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.watermarked").value(true))
-                    .andExpect(jsonPath("$.ownerId").value(ownerId))
+                    .andExpect(jsonPath("$.ownerIdentityentity").value(ownerIdentityentity))
                     .andReturn()
                     .getResponse()
                     .getContentAsString();
 
             String extractResponse = mockMvc.perform(multipart("/api/watermark/extract")
                             .file(new MockMultipartFile("image", "img" + i + ".jpg", MediaType.IMAGE_JPEG_VALUE, jpeg))
-                            .param("requesterId", ownerId))
+                            .param("requesterId", ownerIdentityentity))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.ownerId").value(ownerId))
+                    .andExpect(jsonPath("$.ownerIdentityentity").value(ownerIdentityentity))
                     .andExpect(jsonPath("$.text").value(text))
                     .andReturn()
                     .getResponse()
@@ -385,7 +385,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Scale test")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -411,7 +411,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Combo test")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -437,7 +437,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Blur test")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -462,7 +462,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Triple JPEG")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -476,7 +476,7 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "triple.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg3)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerId").value(OWNER_ID));
+                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "triple.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg3))
@@ -492,7 +492,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "JPEG+Blur")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -519,7 +519,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Large aggressive")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -531,7 +531,7 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "large.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerId").value(OWNER_ID));
+                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "large.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg))
@@ -547,7 +547,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Q20 test")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -577,7 +577,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Q10 extreme")
-                        .param("ownerId", OWNER_ID))
+                        .param("ownerIdentityentity", OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
