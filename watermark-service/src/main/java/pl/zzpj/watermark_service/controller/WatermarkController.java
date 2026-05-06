@@ -16,10 +16,18 @@ import pl.zzpj.watermark_service.dto.DetectWatermarkResponse;
 import pl.zzpj.watermark_service.dto.ExtractedTextResponse;
 import pl.zzpj.watermark_service.service.SteganographyService;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.security.Principal;
+
 @RestController
 @RequestMapping("/api/watermark")
 @Tag(name = "Watermark", description = "Operations for embedding, detecting, and extracting invisible image watermarks")
 public class WatermarkController {
+
+    private static final Logger log = LoggerFactory.getLogger(WatermarkController.class);
+
     private final SteganographyService steganographyService;
 
     /**
@@ -36,7 +44,7 @@ public class WatermarkController {
      *
      * @param image source image (PNG, JPG, BMP, or any format supported by Java ImageIO)
      * @param text text payload to embed
-     * @param ownerId owner identifier stored in the watermark metadata
+     * @param principal injected security principal containing the validated user identifier
      * @return generated PNG image containing the watermark
      */
     @PostMapping(
@@ -50,11 +58,15 @@ public class WatermarkController {
     )
     @ApiResponse(responseCode = "200", description = "Watermark embedded successfully",
             content = @Content(mediaType = MediaType.IMAGE_PNG_VALUE))
+    @ApiResponse(responseCode = "401", description = "Unauthorized - missing or invalid token")
     public ResponseEntity<byte[]> embed(
             @RequestParam("image") MultipartFile image,
             @RequestParam("text") String text,
-            @RequestParam("ownerId") String ownerId
+            Principal principal
     ) {
+        String ownerId = principal != null ? principal.getName() : "Unknown-0";
+        log.info("Watermark embed requested. Resolved principal ownerId: {}", ownerId);
+
         byte[] watermarkedImage = steganographyService.embedMessage(image, text, ownerId);
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
@@ -86,7 +98,7 @@ public class WatermarkController {
      * Extracts the embedded text when the requester is authorized to read it.
      *
      * @param image image containing a watermark
-     * @param requesterId identifier of the requesting user
+     * @param principal injected security principal containing the validated user identifier
      * @return extracted watermark data
      */
     @PostMapping(
@@ -101,10 +113,14 @@ public class WatermarkController {
     @ApiResponse(responseCode = "200", description = "Watermark extracted successfully",
             content = @Content(schema = @Schema(implementation = ExtractedTextResponse.class)))
     @ApiResponse(responseCode = "403", description = "Requester is not allowed to read this watermark")
+    @ApiResponse(responseCode = "401", description = "Unauthorized - missing or invalid token")
     public ExtractedTextResponse extract(
             @RequestParam("image") MultipartFile image,
-            @RequestParam("requesterId") String requesterId
+            Principal principal
     ) {
+        String requesterId = principal != null ? principal.getName() : "Unknown-0";
+        log.info("Watermark extract requested. Resolved principal requesterId: {}", requesterId);
+
         return steganographyService.extractMessage(image, requesterId);
     }
 

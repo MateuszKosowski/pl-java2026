@@ -25,7 +25,7 @@ public class AuthController {
         return userRepository.findByEmail(request.getEmail())
                 .map(user -> {
                     if (passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-                        String token = jwtService.generateToken(user.getUsername());
+                        String token = jwtService.generateToken(user.getUsername(), user.getId());
                         return ResponseEntity.ok(new LoginResponse(token));
                     }
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid password");
