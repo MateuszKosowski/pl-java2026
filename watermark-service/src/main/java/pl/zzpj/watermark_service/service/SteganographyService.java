@@ -20,7 +20,6 @@ import javax.crypto.spec.SecretKeySpec;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.awt.image.Raster;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -47,7 +46,7 @@ public class SteganographyService {
 
     private static final int BLOCK_SIZE = 4;
     private static final int REDUNDANCY = 3;
-    private static final double DELTA = 80.0d;
+    private static final double DELTA = 50.0d;
     private static final int HEADER_BITS = 32;
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128;
@@ -733,24 +732,19 @@ public class SteganographyService {
             double[][] luminance = new double[paddedHeight][paddedWidth];
             double[][] cb = new double[originalHeight][originalWidth];
             double[][] cr = new double[originalHeight][originalWidth];
-            Raster raster = image.getRaster();
-            int bands = raster.getNumBands();
-            double maxSample = FastMath.pow(2.0d, image.getColorModel().getComponentSize(0)) - 1.0d;
-            double sampleScale = 255.0d / maxSample;
 
+            // Use image.getRGB which always returns 0xAARRGGBB regardless of the
+            // underlying raster layout (PNGs may decode to TYPE_3BYTE_BGR, TYPE_4BYTE_ABGR,
+            // etc., where raster band 0 is not necessarily red).
             for (int row = 0; row < originalHeight; row++) {
                 for (int column = 0; column < originalWidth; column++) {
-                    if (bands == 1) {
-                        double sample = raster.getSampleDouble(column, row, 0) * sampleScale;
-                        luminance[row][column] = sample;
-                    } else {
-                        double red = raster.getSampleDouble(column, row, 0) * sampleScale;
-                        double green = raster.getSampleDouble(column, row, 1) * sampleScale;
-                        double blue = raster.getSampleDouble(column, row, 2) * sampleScale;
-                        luminance[row][column] = (0.299d * red) + (0.587d * green) + (0.114d * blue);
-                        cb[row][column] = (-0.168736d * red) - (0.331264d * green) + (0.5d * blue);
-                        cr[row][column] = (0.5d * red) - (0.418688d * green) - (0.081312d * blue);
-                    }
+                    int argb = image.getRGB(column, row);
+                    double red = (argb >> 16) & 0xFF;
+                    double green = (argb >> 8) & 0xFF;
+                    double blue = argb & 0xFF;
+                    luminance[row][column] = (0.299d * red) + (0.587d * green) + (0.114d * blue);
+                    cb[row][column] = (-0.168736d * red) - (0.331264d * green) + (0.5d * blue);
+                    cr[row][column] = (0.5d * red) - (0.418688d * green) - (0.081312d * blue);
                 }
             }
 
