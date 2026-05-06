@@ -1,18 +1,5 @@
 spring:
   application:
     name: watermark-service
-  profiles:
-    active: jwt
   config:
     import: "optional:configserver:http://localhost:8888"
-  servlet:
-    multipart:
-      max-file-size: 20MB
-      max-request-size: 25MB
-server:
-  port: 8083
-watermark:
-  app-key: ${WATERMARK_APP_KEY:local-dev-watermark-secret}
-springdoc:
-  swagger-ui:
-    path: /swagger-ui.html
