@@ -21,7 +21,6 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.Raster;
-import java.awt.image.WritableRaster;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -724,7 +723,7 @@ public class SteganographyService {
     private record WatermarkEnvelope(int version, String ownerId, byte[] ownerPayload) {
     }
 
-    private record WatermarkImageData(int width, int height, double[][] luminance) {
+    private record WatermarkImageData(int width, int height, double[][] luminance, int[][] rgb) {
 
         private static WatermarkImageData from(BufferedImage image) {
             int originalWidth = image.getWidth();
@@ -732,12 +731,14 @@ public class SteganographyService {
             int width = makeBlockAligned(originalWidth);
             int height = makeBlockAligned(originalHeight);
             double[][] luminance = new double[height][width];
+            int[][] rgb = new int[originalHeight][originalWidth];
             Raster raster = image.getRaster();
             int bands = raster.getNumBands();
             double maxSample = FastMath.pow(2.0d, image.getColorModel().getComponentSize(0)) - 1.0d;
 
             for (int row = 0; row < originalHeight; row++) {
                 for (int column = 0; column < originalWidth; column++) {
+                    rgb[row][column] = image.getRGB(column, row);
                     if (bands == 1) {
                         double sample = raster.getSampleDouble(column, row, 0);
                         luminance[row][column] = (sample / maxSample) * 255.0d;
@@ -761,23 +762,72 @@ public class SteganographyService {
                 }
             }
 
-            return new WatermarkImageData(originalWidth, originalHeight, luminance);
+            return new WatermarkImageData(originalWidth, originalHeight, luminance, rgb);
         }
 
         private BufferedImage withUpdatedLuminance(double[][] updatedLuminance) {
-            int outputHeight = updatedLuminance.length;
-            int outputWidth = updatedLuminance[0].length;
-            BufferedImage result = new BufferedImage(outputWidth, outputHeight, BufferedImage.TYPE_USHORT_GRAY);
-            WritableRaster raster = result.getRaster();
+            BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
 
-            for (int row = 0; row < outputHeight; row++) {
-                for (int column = 0; column < outputWidth; column++) {
-                    int sample = clampToRange((int) FastMath.round(updatedLuminance[row][column] * 257.0d), 0, 65535);
-                    raster.setSample(column, row, 0, sample);
+            for (int row = 0; row < height; row++) {
+                for (int column = 0; column < width; column++) {
+                    result.setRGB(column, row, colorWithLuminance(rgb[row][column], updatedLuminance[row][column]).getRGB());
                 }
             }
 
             return result;
+        }
+
+        private Color colorWithLuminance(int originalRgb, double targetLuminance) {
+            Color originalColor = new Color(originalRgb);
+            double target = clampToRange((int) FastMath.round(targetLuminance), 0, 255);
+            double[] channels = {originalColor.getRed(), originalColor.getGreen(), originalColor.getBlue()};
+            double[] weights = {0.299d, 0.587d, 0.114d};
+            boolean[] fixed = new boolean[channels.length];
+
+            for (int iteration = 0; iteration < channels.length; iteration++) {
+                double current = (weights[0] * channels[0]) + (weights[1] * channels[1]) + (weights[2] * channels[2]);
+                double delta = target - current;
+                if (FastMath.abs(delta) < 0.5d) {
+                    break;
+                }
+
+                double weightSquareSum = 0.0d;
+                for (int index = 0; index < channels.length; index++) {
+                    if (!fixed[index]) {
+                        weightSquareSum += weights[index] * weights[index];
+                    }
+                }
+                if (weightSquareSum == 0.0d) {
+                    break;
+                }
+
+                boolean clamped = false;
+                for (int index = 0; index < channels.length; index++) {
+                    if (fixed[index]) {
+                        continue;
+                    }
+                    double adjusted = channels[index] + (delta * weights[index] / weightSquareSum);
+                    if (adjusted < 0.0d) {
+                        channels[index] = 0.0d;
+                        fixed[index] = true;
+                        clamped = true;
+                    } else if (adjusted > 255.0d) {
+                        channels[index] = 255.0d;
+                        fixed[index] = true;
+                        clamped = true;
+                    } else {
+                        channels[index] = adjusted;
+                    }
+                }
+                if (!clamped) {
+                    break;
+                }
+            }
+
+            int red = clampToRange((int) FastMath.round(channels[0]), 0, 255);
+            int green = clampToRange((int) FastMath.round(channels[1]), 0, 255);
+            int blue = clampToRange((int) FastMath.round(channels[2]), 0, 255);
+            return new Color(red, green, blue);
         }
 
         static int clampToRange(int value, int min, int max) {

@@ -36,9 +36,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "spring.cloud.config.enabled=false",
         "eureka.client.enabled=false",
+        "watermark.app-key=test-watermark-app-key",
         "spring.profiles.active="
 })
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 class ApplicationTests {
 
     private static final String OWNER_ID = "user-123";
@@ -59,6 +60,12 @@ class ApplicationTests {
                 .andReturn()
                 .getResponse()
                 .getContentAsByteArray();
+
+        BufferedImage embedded = ImageIO.read(new ByteArrayInputStream(embeddedImage));
+        assertNotNull(embedded);
+        assertEquals(512, embedded.getWidth());
+        assertEquals(512, embedded.getHeight());
+        assertTrue(containsColorPixels(embedded), "Embedded image should preserve RGB color information");
 
         mockMvc.perform(multipart("/api/watermark/detect")
                         .file(new MockMultipartFile("image", "embedded.png", MediaType.IMAGE_PNG_VALUE, embeddedImage)))
@@ -121,6 +128,11 @@ class ApplicationTests {
                 .andReturn()
                 .getResponse()
                 .getContentAsByteArray();
+
+        BufferedImage embedded = ImageIO.read(new ByteArrayInputStream(embeddedImage));
+        assertNotNull(embedded);
+        assertEquals(513, embedded.getWidth());
+        assertEquals(513, embedded.getHeight());
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "odd-embedded.png", MediaType.IMAGE_PNG_VALUE, embeddedImage))
@@ -637,6 +649,18 @@ class ApplicationTests {
         }
 
         return outputStream.toByteArray();
+    }
+
+    private boolean containsColorPixels(BufferedImage image) {
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                Color color = new Color(image.getRGB(x, y));
+                if (color.getRed() != color.getGreen() || color.getGreen() != color.getBlue()) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private byte[] scaleImage(byte[] imageBytes, double scale) throws Exception {
