@@ -46,7 +46,7 @@ public class SteganographyService {
 
     private static final int BLOCK_SIZE = 4;
     private static final int REDUNDANCY = 3;
-    private static final double DELTA = 50.0d;
+    private static final double DELTA = 70.0d;
     private static final int HEADER_BITS = 32;
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128;
