@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import pl.zzpj.watermark_service.client.AiServiceFeignClient;
+import pl.zzpj.watermark_service.dto.ClassificationResult;
 import pl.zzpj.watermark_service.dto.DetectWatermarkResponse;
 import pl.zzpj.watermark_service.dto.ExtractedTextResponse;
 import pl.zzpj.watermark_service.service.SteganographyService;
@@ -29,24 +31,14 @@ public class WatermarkController {
     private static final Logger log = LoggerFactory.getLogger(WatermarkController.class);
 
     private final SteganographyService steganographyService;
+    private final AiServiceFeignClient aiServiceFeignClient;
 
-    /**
-     * Creates a new controller instance.
-     *
-     * @param steganographyService watermark service used by the API layer
-     */
-    public WatermarkController(SteganographyService steganographyService) {
+    public WatermarkController(SteganographyService steganographyService,
+                               AiServiceFeignClient aiServiceFeignClient) {
         this.steganographyService = steganographyService;
+        this.aiServiceFeignClient = aiServiceFeignClient;
     }
 
-    /**
-     * Embeds a protected watermark into the provided image.
-     *
-     * @param image source image (PNG, JPG, BMP, or any format supported by Java ImageIO)
-     * @param text text payload to embed
-     * @param principal injected security principal containing the validated user identifier
-     * @return generated PNG image containing the watermark
-     */
     @PostMapping(
             value = "/embed",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
@@ -54,7 +46,8 @@ public class WatermarkController {
     )
     @Operation(
             summary = "Embed watermark",
-            description = "Embeds an invisible watermark into an uploaded image and returns the processed PNG."
+            description = "Embeds an invisible watermark into an uploaded image and returns the processed PNG. "
+                    + "The image is also classified by ai-service; classification metadata is exposed via response headers."
     )
     @ApiResponse(responseCode = "200", description = "Watermark embedded successfully",
             content = @Content(mediaType = MediaType.IMAGE_PNG_VALUE))
@@ -67,18 +60,20 @@ public class WatermarkController {
         String ownerId = principal != null ? principal.getName() : "Unknown-0";
         log.info("Watermark embed requested. Resolved principal ownerId: {}", ownerId);
 
+        ClassificationResult classification = aiServiceFeignClient.classify(image);
+        log.info("Classification: category={}, label={}, confidence={}",
+                classification.category(), classification.label(), classification.confidence());
+
         byte[] watermarkedImage = steganographyService.embedMessage(image, text, ownerId);
+
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
+                .header("X-Image-Category", classification.category())
+                .header("X-Image-Label", classification.label())
+                .header("X-Image-Confidence", String.valueOf(classification.confidence()))
                 .body(watermarkedImage);
     }
 
-    /**
-     * Detects whether an uploaded image contains a watermark created by this service.
-     *
-     * @param image uploaded image to inspect
-     * @return detection result containing watermark presence and metadata
-     */
     @PostMapping(
             value = "/detect",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
@@ -94,13 +89,6 @@ public class WatermarkController {
         return steganographyService.detectWatermark(image);
     }
 
-    /**
-     * Extracts the embedded text when the requester is authorized to read it.
-     *
-     * @param image image containing a watermark
-     * @param principal injected security principal containing the validated user identifier
-     * @return extracted watermark data
-     */
     @PostMapping(
             value = "/extract",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
@@ -124,16 +112,6 @@ public class WatermarkController {
         return steganographyService.extractMessage(image, requesterId);
     }
 
-    /**
-     * Returns a PNG visualization of watermark block locations in the provided image.
-     *
-     * <p>Each 4×4 block (displayed as 8×8 after scaling from the DWT subband) that
-     * carries embedded data is highlighted with a semi-transparent red overlay.
-     * If no watermark is detected, the image is returned without any highlights.</p>
-     *
-     * @param image uploaded image to visualize
-     * @return PNG image with highlighted watermark blocks
-     */
     @PostMapping(
             value = "/visualize",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,

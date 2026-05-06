@@ -72,6 +72,21 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  ai-service:
+    build:
+      context: .
+      dockerfile: ai-service/Dockerfile
+    container_name: ai-service
+    environment:
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    depends_on:
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    restart: unless-stopped
+
   watermark-service:
     build:
       context: .
@@ -86,6 +101,8 @@ services:
       config-server:
         condition: service_healthy
       eureka-server:
+        condition: service_started
+      ai-service:
         condition: service_started
     restart: unless-stopped
 

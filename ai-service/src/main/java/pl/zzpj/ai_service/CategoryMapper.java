@@ -1,0 +1,114 @@
+package pl.zzpj.ai_service;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Maps a raw ImageNet class label to one of a fixed set of broad categories.
+ * Matching is done by checking whether any keyword for a given category appears
+ * as a substring of the lower-cased label. Returns {@code "other"} when no
+ * keyword matches.
+ */
+public final class CategoryMapper {
+
+    private CategoryMapper() {}
+
+    private static final Map<String, List<String>> KEYWORDS = Map.ofEntries(
+            Map.entry("dog", List.of(
+                    "dog", "hound", "terrier", "retriever", "bulldog", "poodle", "collie",
+                    "spaniel", "shepherd", "husky", "dalmatian", "dachshund", "labrador",
+                    "chihuahua", "pug", "boxer", "beagle", "pinscher", "mastiff", "greyhound",
+                    "samoyed", "chow", "schnauzer", "corgi", "shih", "maltese", "weimaraner"
+            )),
+            Map.entry("cat", List.of(
+                    "cat", "tabby", "kitten", "persian", "siamese", "egyptian",
+                    "lynx", "cougar", "cheetah", "jaguar", "leopard", "lion", "tiger"
+            )),
+            Map.entry("bird", List.of(
+                    "bird", "jay", "magpie", "chickadee", "finch", "robin", "hummingbird",
+                    "eagle", "hawk", "vulture", "kite", "crow", "parrot", "macaw",
+                    "cockatoo", "peacock", "quail", "partridge", "duck", "goose", "swan",
+                    "penguin", "albatross", "pelican", "flamingo", "crane", "rooster", "hen",
+                    "ostrich", "toucan", "pigeon", "dove", "sparrow", "warbler",
+                    "gallinule", "coot", "limpkin", "bustard", "hornbill",
+                    "puffin", "cormorant", "frigatebird", "gannet", "skimmer", "tern",
+                    "sandpiper", "dunlin", "oystercatcher", "dowitcher", "godwit",
+                    "bee eater", "kingfisher", "motmot", "tody", "chukar", "jacamar",
+                    "ptarmigan", "prairie chicken", "ruffed grouse", "bulbul", "iora",
+                    "lorikeet", "kookaburra", "bower bird", "weaverbird", "indigo bunting",
+                    "goldfinch", "house finch", "junco", "brambling", "chaffinch",
+                    "water ouzel", "dipper", "reed warbler", "thrush", "wren", "nuthatch",
+                    "treecreeper", "woodpecker", "flicker", "toucanet",
+                    "heron", "bittern", "ibis", "spoonbill", "stork", "avocet",
+                    "cuckoo", "nighthawk", "whippoorwill", "swift", "nightjar",
+                    "murre", "murrelet", "auklet", "razorbill", "guillemot",
+                    "bald eagle", "black grouse", "capercaillie", "quetzal"
+            )),
+            Map.entry("fish", List.of(
+                    "fish", "shark", "ray", "stingray", "eel", "goldfish", "tench",
+                    "salmon", "trout", "sturgeon", "carp", "seahorse", "coho"
+            )),
+            Map.entry("reptile", List.of(
+                    "snake", "lizard", "turtle", "tortoise", "crocodile", "alligator",
+                    "chameleon", "iguana", "gecko", "komodo", "viper", "cobra", "boa", "python"
+            )),
+            Map.entry("insect", List.of(
+                    "butterfly", "moth", "bee", "wasp", "ant", "beetle", "dragonfly",
+                    "cockroach", "grasshopper", "cricket", "fly", "mosquito", "ladybug",
+                    "caterpillar", "cicada"
+            )),
+            Map.entry("vehicle", List.of(
+                    "car", "truck", "bus", "van", "jeep", "limousine", "minivan", "cab",
+                    "bicycle", "motorbike", "motorcycle", "scooter", "moped",
+                    "airplane", "aircraft", "jet", "helicopter", "airship",
+                    "ship", "boat", "canoe", "kayak", "sailboat", "submarine", "yacht",
+                    "train", "locomotive", "streetcar", "tram", "trolleybus",
+                    "tank", "bulldozer", "ambulance", "tractor", "forklift"
+            )),
+            Map.entry("food", List.of(
+                    "pizza", "burger", "hamburger", "sandwich", "hot dog",
+                    "bread", "pretzel", "bagel", "cake", "muffin", "croissant", "waffle",
+                    "apple", "banana", "orange", "strawberry", "lemon", "pineapple",
+                    "broccoli", "cauliflower", "cabbage", "artichoke", "mushroom",
+                    "corn", "squash", "cucumber", "pepper", "eggplant",
+                    "soup", "ice cream", "chocolate", "guacamole", "espresso"
+            )),
+            Map.entry("electronics", List.of(
+                    "phone", "television", "monitor", "laptop", "keyboard",
+                    "remote control", "camera", "speaker", "radio", "computer",
+                    "printer", "joystick", "modem", "ipod", "cellular"
+            )),
+            Map.entry("furniture", List.of(
+                    "chair", "table", "sofa", "couch", "bed", "desk",
+                    "bookcase", "wardrobe", "dresser", "cabinet", "rocking chair"
+            )),
+            Map.entry("sports", List.of(
+                    "ball", "tennis", "basketball", "football", "soccer", "golf",
+                    "baseball", "volleyball", "surfboard", "skateboard", "ski",
+                    "dumbbell", "barbell"
+            )),
+            Map.entry("nature", List.of(
+                    "mountain", "cliff", "volcano", "valley", "lake", "ocean", "beach",
+                    "forest", "jungle", "desert", "flower", "daisy", "rose", "tulip",
+                    "sunflower", "coral", "reef"
+            )),
+            Map.entry("person", List.of(
+                    "person", "people", "face", "baby", "cowboy", "groom", "bridegroom"
+            ))
+    );
+
+    /**
+     * Maps an ImageNet label to a broad category.
+     *
+     * @param label raw ImageNet class label (e.g. "American gallinule")
+     * @return broad category name, or {@code "other"} if no keyword matches
+     */
+    public static String map(String label) {
+        String lower = label.toLowerCase().replace("_", " ");
+        return KEYWORDS.entrySet().stream()
+                .filter(e -> e.getValue().stream().anyMatch(lower::contains))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse("other");
+    }
+}
