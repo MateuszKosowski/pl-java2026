@@ -16,9 +16,6 @@ import pl.zzpj.watermark_service.dto.DetectWatermarkResponse;
 import pl.zzpj.watermark_service.dto.ExtractedTextResponse;
 import pl.zzpj.watermark_service.service.SteganographyService;
 
-/**
- * Exposes watermark-related endpoints for image processing clients.
- */
 @RestController
 @RequestMapping("/api/watermark")
 @Tag(name = "Watermark", description = "Operations for embedding, detecting, and extracting invisible image watermarks")
