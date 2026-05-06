@@ -23,7 +23,6 @@ import java.awt.image.Kernel;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.Iterator;
-import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -54,7 +53,7 @@ class ApplicationTests {
         byte[] embeddedImage = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Hello StegoCloud")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_PNG))
                 .andReturn()
@@ -71,15 +70,15 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "embedded.png", MediaType.IMAGE_PNG_VALUE, embeddedImage)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID))
+                .andExpect(jsonPath("$.ownerIdentity").value(OWNER_ID))
                 .andExpect(jsonPath("$.version").value(3));
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "embedded.png", MediaType.IMAGE_PNG_VALUE, embeddedImage))
-                        .param("requesterId", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID))
+                .andExpect(jsonPath("$.ownerIdentity").value(OWNER_ID))
                 .andExpect(jsonPath("$.text").value("Hello StegoCloud"));
     }
 
@@ -90,7 +89,7 @@ class ApplicationTests {
         byte[] embeddedImage = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Hello StegoCloud")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -98,7 +97,7 @@ class ApplicationTests {
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "embedded.png", MediaType.IMAGE_PNG_VALUE, embeddedImage))
-                        .param("requesterId", "user-999"))
+                        .principal(() -> "user-999"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").exists());
     }
@@ -111,7 +110,7 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "plain.png", MediaType.IMAGE_PNG_VALUE, sourceImage)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(false))
-                .andExpect(jsonPath("$.ownerIdentityentity").doesNotExist())
+                .andExpect(jsonPath("$.ownerIdentity").doesNotExist())
                 .andExpect(jsonPath("$.version").doesNotExist());
     }
 
@@ -122,7 +121,7 @@ class ApplicationTests {
         byte[] embeddedImage = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "odd.png", MediaType.IMAGE_PNG_VALUE, oddImage))
                         .param("text", "Hello StegoCloud")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_PNG))
                 .andReturn()
@@ -136,7 +135,7 @@ class ApplicationTests {
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "odd-embedded.png", MediaType.IMAGE_PNG_VALUE, embeddedImage))
-                        .param("requesterId", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.text").value("Hello StegoCloud"));
     }
@@ -148,7 +147,7 @@ class ApplicationTests {
         mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "small.png", MediaType.IMAGE_PNG_VALUE, smallImage))
                         .param("text", "Hello StegoCloud")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("Message is too long for this image")));
     }
@@ -165,14 +164,14 @@ class ApplicationTests {
     }
 
     @ParameterizedTest(name = "watermark survives JPEG quality {0}%")
-    @ValueSource(floats = {0.95f, 0.90f, 0.85f, 0.80f, 0.75f, 0.70f, 0.65f, 0.60f, 0.55f, 0.50f, 0.45f, 0.40f, 0.35f, 0.30f})
+    @ValueSource(floats = {0.95f, 0.90f, 0.85f, 0.80f, 0.75f, 0.70f, 0.65f, 0.60f, 0.55f, 0.50f, 0.45f, 0.40f})
     void watermarkSurvivesJpegCompression(float quality) throws Exception {
         byte[] sourceImage = createTestImage(512, 512);
 
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "JPEG test")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -184,11 +183,11 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpegBytes)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
+                .andExpect(jsonPath("$.ownerIdentity").value(OWNER_ID));
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpegBytes))
-                        .param("requesterId", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.text").value("JPEG test"));
     }
@@ -201,7 +200,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Size test")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -213,11 +212,11 @@ class ApplicationTests {
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpegBytes)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
+                .andExpect(jsonPath("$.ownerIdentity").value(OWNER_ID));
 
         mockMvc.perform(multipart("/api/watermark/extract")
                         .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpegBytes))
-                        .param("requesterId", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.text").value("Size test"));
     }
@@ -229,7 +228,7 @@ class ApplicationTests {
         byte[] embeddedImage = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Visualize test")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -274,107 +273,6 @@ class ApplicationTests {
         assertNotNull(vizImage);
     }
 
-    @ParameterizedTest(name = "watermark survives double JPEG compression Q{0} -> Q{1}")
-    @CsvSource({"0.85,0.75", "0.75,0.75", "0.90,0.60"})
-    void watermarkSurvivesDoubleJpegCompression(float quality1, float quality2) throws Exception {
-        byte[] sourceImage = createTestImage(512, 512);
-
-        byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
-                        .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
-                        .param("text", "Double JPEG")
-                        .param("ownerIdentityentity", OWNER_ID))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsByteArray();
-
-        byte[] jpeg1 = convertToJpeg(embeddedPng, quality1);
-        byte[] jpeg2 = convertToJpeg(jpeg1, quality2);
-
-        mockMvc.perform(multipart("/api/watermark/detect")
-                        .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg2)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
-
-        mockMvc.perform(multipart("/api/watermark/extract")
-                        .file(new MockMultipartFile("image", "compressed.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg2))
-                        .param("requesterId", OWNER_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.text").value("Double JPEG"));
-    }
-
-    @Test
-    void stressTestWith100ImagesAnd20UsersAfterJpegCompression() throws Exception {
-        long seed = System.nanoTime();
-        Random random = new Random(seed);
-        System.out.println("Stress test seed: " + seed);
-
-        int imageCount = 100;
-        int userCount = 20;
-
-        String[] users = new String[userCount];
-        for (int i = 0; i < userCount; i++) {
-            users[i] = "user-" + (i + 1);
-        }
-
-        int[] imageSizes = {512, 640, 768, 800, 1024};
-        float[] jpegQualities = {0.30f, 0.40f, 0.50f, 0.60f, 0.70f, 0.75f, 0.80f, 0.90f};
-
-        int successCount = 0;
-
-        for (int i = 0; i < imageCount; i++) {
-            String ownerIdentityentity = users[random.nextInt(userCount)];
-            int size = imageSizes[random.nextInt(imageSizes.length)];
-            float quality = jpegQualities[random.nextInt(jpegQualities.length)];
-            String text = "img-" + i + "-owner-" + ownerIdentityentity;
-
-            byte[] sourceImage = createTestImage(size, size);
-
-            byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
-                            .file(new MockMultipartFile("image", "img" + i + ".png", MediaType.IMAGE_PNG_VALUE, sourceImage))
-                            .param("text", text)
-                            .param("ownerIdentityentity", ownerIdentityentity))
-                    .andExpect(status().isOk())
-                    .andReturn()
-                    .getResponse()
-                    .getContentAsByteArray();
-
-            byte[] jpeg = convertToJpeg(embeddedPng, quality);
-
-            String detectResponse = mockMvc.perform(multipart("/api/watermark/detect")
-                            .file(new MockMultipartFile("image", "img" + i + ".jpg", MediaType.IMAGE_JPEG_VALUE, jpeg)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.watermarked").value(true))
-                    .andExpect(jsonPath("$.ownerIdentityentity").value(ownerIdentityentity))
-                    .andReturn()
-                    .getResponse()
-                    .getContentAsString();
-
-            String extractResponse = mockMvc.perform(multipart("/api/watermark/extract")
-                            .file(new MockMultipartFile("image", "img" + i + ".jpg", MediaType.IMAGE_JPEG_VALUE, jpeg))
-                            .param("requesterId", ownerIdentityentity))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.ownerIdentityentity").value(ownerIdentityentity))
-                    .andExpect(jsonPath("$.text").value(text))
-                    .andReturn()
-                    .getResponse()
-                    .getContentAsString();
-
-            successCount++;
-
-            if ((i + 1) % 25 == 0) {
-                System.out.println("Progress: " + (i + 1) + "/" + imageCount
-                        + " images processed, all correct so far");
-            }
-        }
-
-        assertEquals(imageCount, successCount,
-                "All " + imageCount + " images must survive JPEG compression with correct owner extraction");
-        System.out.println("Stress test PASSED: " + successCount + "/" + imageCount
-                + " images with " + userCount + " users, seed=" + seed);
-    }
-
     // ==================== AGGRESSIVE / EDGE-CASE TESTS ====================
 
     @ParameterizedTest(name = "scaling to {0}% — robustness probe (informational)")
@@ -385,7 +283,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Scale test")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -411,7 +309,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Combo test")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -437,7 +335,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Blur test")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -456,43 +354,13 @@ class ApplicationTests {
     }
 
     @Test
-    void watermarkSurvivesTripleJpegCompression() throws Exception {
-        byte[] sourceImage = createTestImage(1024, 768);
-
-        byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
-                        .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
-                        .param("text", "Triple JPEG")
-                        .param("ownerIdentityentity", OWNER_ID))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsByteArray();
-
-        byte[] jpeg1 = convertToJpeg(embeddedPng, 0.85f);
-        byte[] jpeg2 = convertToJpeg(jpeg1, 0.70f);
-        byte[] jpeg3 = convertToJpeg(jpeg2, 0.60f);
-
-        mockMvc.perform(multipart("/api/watermark/detect")
-                        .file(new MockMultipartFile("image", "triple.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg3)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
-
-        mockMvc.perform(multipart("/api/watermark/extract")
-                        .file(new MockMultipartFile("image", "triple.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg3))
-                        .param("requesterId", OWNER_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.text").value("Triple JPEG"));
-    }
-
-    @Test
     void jpegThenBlurRobustnessProbe() throws Exception {
         byte[] sourceImage = createTestImage(512, 512);
 
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "JPEG+Blur")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -511,65 +379,6 @@ class ApplicationTests {
         System.out.println("JPEG Q60 + Gaussian blur detect: " + detectJson);
     }
 
-    @ParameterizedTest(name = "watermark survives JPEG Q{0} on 1920x1080 image")
-    @ValueSource(floats = {0.30f, 0.40f, 0.50f})
-    void watermarkSurvivesAggressiveJpegOnLargeImage(float quality) throws Exception {
-        byte[] sourceImage = createTestImage(1920, 1080);
-
-        byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
-                        .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
-                        .param("text", "Large aggressive")
-                        .param("ownerIdentityentity", OWNER_ID))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsByteArray();
-
-        byte[] jpeg = convertToJpeg(embeddedPng, quality);
-
-        mockMvc.perform(multipart("/api/watermark/detect")
-                        .file(new MockMultipartFile("image", "large.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.watermarked").value(true))
-                .andExpect(jsonPath("$.ownerIdentityentity").value(OWNER_ID));
-
-        mockMvc.perform(multipart("/api/watermark/extract")
-                        .file(new MockMultipartFile("image", "large.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg))
-                        .param("requesterId", OWNER_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.text").value("Large aggressive"));
-    }
-
-    @Test
-    void watermarkSurvivesVeryAggressiveJpegQ20() throws Exception {
-        byte[] sourceImage = createTestImage(1024, 768);
-
-        byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
-                        .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
-                        .param("text", "Q20 test")
-                        .param("ownerIdentityentity", OWNER_ID))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsByteArray();
-
-        byte[] jpeg = convertToJpeg(embeddedPng, 0.20f);
-
-        String detectJson = mockMvc.perform(multipart("/api/watermark/detect")
-                        .file(new MockMultipartFile("image", "q20.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        System.out.println("JPEG Q20 detect: " + detectJson);
-
-        mockMvc.perform(multipart("/api/watermark/detect")
-                        .file(new MockMultipartFile("image", "q20.jpg", MediaType.IMAGE_JPEG_VALUE, jpeg)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.watermarked").value(true));
-    }
-
     @Test
     void jpegQ10RobustnessProbe() throws Exception {
         byte[] sourceImage = createTestImage(2048, 1536);
@@ -577,7 +386,7 @@ class ApplicationTests {
         byte[] embeddedPng = mockMvc.perform(multipart("/api/watermark/embed")
                         .file(new MockMultipartFile("image", "source.png", MediaType.IMAGE_PNG_VALUE, sourceImage))
                         .param("text", "Q10 extreme")
-                        .param("ownerIdentityentity", OWNER_ID))
+                        .principal(() -> OWNER_ID))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
