@@ -8,7 +8,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest(properties = {
-		"app.jwt.secret=TwojTestowySekretKtoryMusiBycWystarczajacoDlugiZebyZadowolicAlgorytmJWT"
+                "app.jwt.secret=TwojTestowySekretKtoryMusiBycWystarczajacoDlugiZebyZadowolicAlgorytmJWT",
+                "spring.cloud.config.enabled=false",
+                "eureka.client.enabled=false"
 })
 @Testcontainers
 class ApplicationTests {

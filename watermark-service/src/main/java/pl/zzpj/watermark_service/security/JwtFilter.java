@@ -48,8 +48,10 @@ public class JwtFilter extends OncePerRequestFilter {
 
             try {
                 if (authClient.validateToken(token)) {
+                    String principal = extractPrincipalFromToken(token);
+                    log.info("JWT validated successfully. Extracted principal: {}", principal);
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            DEFAULT_USER_PRINCIPAL, null, Collections.emptyList());
+                            principal, null, Collections.emptyList());
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 } else {
                     handleError(response, INVALID_TOKEN_MSG);
@@ -67,6 +69,45 @@ public class JwtFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private String extractPrincipalFromToken(String token) {
+        try {
+            String[] chunks = token.split("\\.");
+            if (chunks.length < 2) return DEFAULT_USER_PRINCIPAL;
+            String payload = new String(java.util.Base64.getUrlDecoder().decode(chunks[1]), java.nio.charset.StandardCharsets.UTF_8);
+
+            String subject = extractJsonStringField(payload, "sub");
+            String userId = extractJsonNumberField(payload, "userId");
+
+            if (subject != null && userId != null) {
+                return subject + "-" + userId;
+            }
+        } catch (Exception e) {
+            log.warn("Could not extract custom principal from token, falling back to default", e);
+        }
+        return DEFAULT_USER_PRINCIPAL;
+    }
+
+    private String extractJsonStringField(String json, String field) {
+        String search = "\"" + field + "\":\"";
+        int start = json.indexOf(search);
+        if (start == -1) return null;
+        start += search.length();
+        int end = json.indexOf("\"", start);
+        return end != -1 ? json.substring(start, end) : null;
+    }
+
+    private String extractJsonNumberField(String json, String field) {
+        String search = "\"" + field + "\":";
+        int start = json.indexOf(search);
+        if (start == -1) return null;
+        start += search.length();
+        int end = start;
+        while (end < json.length() && Character.isDigit(json.charAt(end))) {
+            end++;
+        }
+        return end > start ? json.substring(start, end) : null;
     }
 
     private void handleError(HttpServletResponse response, String message) throws IOException {
