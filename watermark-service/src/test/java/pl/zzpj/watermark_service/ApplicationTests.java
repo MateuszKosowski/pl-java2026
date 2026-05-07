@@ -1,5 +1,6 @@
 package pl.zzpj.watermark_service;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -7,9 +8,17 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import pl.zzpj.watermark_service.client.AiServiceFeignClient;
+import pl.zzpj.watermark_service.dto.ClassificationResult;
+
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
@@ -45,6 +54,21 @@ class ApplicationTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private AiServiceFeignClient aiServiceFeignClient;
+
+    @BeforeEach
+    void stubAiService() {
+        when(aiServiceFeignClient.classify(any())).thenReturn(
+                new ClassificationResult(
+                        "test-label",
+                        "test-category",
+                        0.99,
+                        List.of(new ClassificationResult.TopPrediction("test-label", 0.99))
+                )
+        );
+    }
 
     @Test
     void embedsDetectsAndExtractsMessageFromGeneratedImage() throws Exception {
