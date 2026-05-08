@@ -8,12 +8,17 @@ import java.util.Map;
  * Matching is done by checking whether any keyword for a given category appears
  * as a substring of the lower-cased label. Returns {@code "other"} when no
  * keyword matches.
+ *
+ * <p>Categories are evaluated in the order declared below — the first category
+ * with a matching keyword wins. Order matters only if a label could match
+ * keywords from multiple categories; today none do, but the ordered list keeps
+ * future additions deterministic.
  */
 public final class CategoryMapper {
 
     private CategoryMapper() {}
 
-    private static final Map<String, List<String>> KEYWORDS = Map.ofEntries(
+    private static final List<Map.Entry<String, List<String>>> KEYWORDS = List.of(
             Map.entry("dog", List.of(
                     "dog", "hound", "terrier", "retriever", "bulldog", "poodle", "collie",
                     "spaniel", "shepherd", "husky", "dalmatian", "dachshund", "labrador",
@@ -105,7 +110,7 @@ public final class CategoryMapper {
      */
     public static String map(String label) {
         String lower = label.toLowerCase().replace("_", " ");
-        return KEYWORDS.entrySet().stream()
+        return KEYWORDS.stream()
                 .filter(e -> e.getValue().stream().anyMatch(lower::contains))
                 .map(Map.Entry::getKey)
                 .findFirst()

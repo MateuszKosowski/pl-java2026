@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.security.Principal;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/watermark")
@@ -30,15 +31,36 @@ public class WatermarkController {
 
     private static final Logger log = LoggerFactory.getLogger(WatermarkController.class);
 
+    private static final ClassificationResult UNKNOWN_CLASSIFICATION =
+            new ClassificationResult("unknown", "unknown", 0.0, List.of());
+
     private final SteganographyService steganographyService;
     private final AiServiceFeignClient aiServiceFeignClient;
 
+    /**
+     * Creates a new controller instance.
+     *
+     * @param steganographyService watermark service used by the API layer
+     * @param aiServiceFeignClient feign client used to call the AI classification service
+     */
     public WatermarkController(SteganographyService steganographyService,
                                AiServiceFeignClient aiServiceFeignClient) {
         this.steganographyService = steganographyService;
         this.aiServiceFeignClient = aiServiceFeignClient;
     }
 
+    /**
+     * Embeds a protected watermark into the provided image.
+     *
+     * <p>The image is also sent to {@code ai-service} for classification; the result is exposed
+     * via response headers. If the AI service is unreachable, watermarking still proceeds and
+     * the headers fall back to {@code unknown} values.
+     *
+     * @param image source image (PNG, JPG, BMP, or any format supported by Java ImageIO)
+     * @param text text payload to embed
+     * @param principal injected security principal containing the validated user identifier
+     * @return generated PNG image containing the watermark
+     */
     @PostMapping(
             value = "/embed",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
@@ -47,7 +69,8 @@ public class WatermarkController {
     @Operation(
             summary = "Embed watermark",
             description = "Embeds an invisible watermark into an uploaded image and returns the processed PNG. "
-                    + "The image is also classified by ai-service; classification metadata is exposed via response headers."
+                    + "The image is also classified by ai-service; classification metadata is exposed via response headers. "
+                    + "If ai-service is unavailable, watermarking still succeeds and the metadata headers contain 'unknown'."
     )
     @ApiResponse(responseCode = "200", description = "Watermark embedded successfully",
             content = @Content(mediaType = MediaType.IMAGE_PNG_VALUE))
@@ -60,9 +83,7 @@ public class WatermarkController {
         String ownerId = principal != null ? principal.getName() : "Unknown-0";
         log.info("Watermark embed requested. Resolved principal ownerId: {}", ownerId);
 
-        ClassificationResult classification = aiServiceFeignClient.classify(image);
-        log.info("Classification: category={}, label={}, confidence={}",
-                classification.category(), classification.label(), classification.confidence());
+        ClassificationResult classification = classifyOrFallback(image);
 
         byte[] watermarkedImage = steganographyService.embedMessage(image, text, ownerId);
 
@@ -74,6 +95,24 @@ public class WatermarkController {
                 .body(watermarkedImage);
     }
 
+    private ClassificationResult classifyOrFallback(MultipartFile image) {
+        try {
+            ClassificationResult result = aiServiceFeignClient.classify(image);
+            log.info("Classification: category={}, label={}, confidence={}",
+                    result.category(), result.label(), result.confidence());
+            return result;
+        } catch (Exception ex) {
+            log.warn("AI classification failed, continuing without metadata: {}", ex.getMessage());
+            return UNKNOWN_CLASSIFICATION;
+        }
+    }
+
+    /**
+     * Detects whether an uploaded image contains a watermark created by this service.
+     *
+     * @param image uploaded image to inspect
+     * @return detection result containing watermark presence and metadata
+     */
     @PostMapping(
             value = "/detect",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
@@ -89,6 +128,13 @@ public class WatermarkController {
         return steganographyService.detectWatermark(image);
     }
 
+    /**
+     * Extracts the embedded text when the requester is authorized to read it.
+     *
+     * @param image image containing a watermark
+     * @param principal injected security principal containing the validated user identifier
+     * @return extracted watermark data
+     */
     @PostMapping(
             value = "/extract",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
@@ -112,6 +158,12 @@ public class WatermarkController {
         return steganographyService.extractMessage(image, requesterId);
     }
 
+    /**
+     * Returns a PNG visualization of watermark block locations in the provided image.
+     *
+     * @param image uploaded image to inspect
+     * @return PNG with red-highlighted 8×8 blocks where watermark data resides
+     */
     @PostMapping(
             value = "/visualize",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,

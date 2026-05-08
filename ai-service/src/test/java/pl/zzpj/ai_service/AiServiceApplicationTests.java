@@ -2,8 +2,8 @@ package pl.zzpj.ai_service;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest
 @TestPropertySource(properties = {
@@ -13,7 +13,7 @@ import org.springframework.test.context.TestPropertySource;
 })
 class AiServiceApplicationTests {
 
-    @MockBean
+    @MockitoBean
     ClassificationService classificationService;
 
     @Test
