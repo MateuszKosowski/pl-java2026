@@ -25,7 +25,6 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // Włączamy CORS wbudowane w Security (użyje bean'a corsConfigurationSource zdefiniowanego niżej)
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
@@ -43,7 +42,6 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // Spring Security automatycznie poszuka tego Beana dla konfiguracji CORS
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
@@ -51,7 +49,6 @@ public class SecurityConfig {
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
 
-        // BARDZO WAŻNE: Wymagane, gdy uwierzytelniasz się za pomocą tokenów (np. JWT w nagłówku Authorization)
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
