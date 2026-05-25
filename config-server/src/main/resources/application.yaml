@@ -9,3 +9,5 @@ spring:
         git:
           uri: https://github.com/bkolacinski/pl-java2026-config.git
           default-label: main
+        native:
+          search-locations: classpath:/config/
