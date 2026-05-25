@@ -3,3 +3,10 @@ spring:
     name: ai-service
   config:
     import: "optional:configserver:http://localhost:8888"
+  servlet:
+    multipart:
+      # Match watermark-service (20MB) and the nginx client_max_body_size (20m).
+      # The default 1MB rejected larger photos forwarded from watermark-service
+      # with a 500 before they reached the classifier.
+      max-file-size: 20MB
+      max-request-size: 25MB
