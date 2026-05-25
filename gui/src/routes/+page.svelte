@@ -2,14 +2,48 @@
     import { onMount } from 'svelte';
 
     let token = $state('');
-    let files = $state();
+
+    /** @type {'embed' | 'detect' | 'extract' | 'visualize'} */
+    let activeTab = $state('embed');
+
+    const tabs = /** @type {const} */ ([
+        { id: 'embed', label: '✨ Osadź' },
+        { id: 'detect', label: '🔍 Wykryj' },
+        { id: 'extract', label: '📖 Wyodrębnij' },
+        { id: 'visualize', label: '🗺️ Wizualizuj' }
+    ]);
+
+    // --- Embed ---
+    let embedFiles = $state();
     let watermarkText = $state('');
-    let isProcessing = $state(false);
+    let embedProcessing = $state(false);
     /** @type {string | null} */
     let resultImageUrl = $state(null);
     /** @type {{ category: string, label: string | null, confidence: number | null } | null} */
     let classification = $state(null);
-    let errorMessage = $state('');
+    let embedError = $state('');
+
+    // --- Detect ---
+    let detectFiles = $state();
+    let detectProcessing = $state(false);
+    /** @type {{ watermarked: boolean, ownerIdentity: string | null, version: number | null } | null} */
+    let detectResult = $state(null);
+    let detectError = $state('');
+
+    // --- Extract ---
+    let extractFiles = $state();
+    let extractProcessing = $state(false);
+    /** @type {{ ownerIdentity: string, text: string } | null} */
+    let extractResult = $state(null);
+    let extractError = $state('');
+
+    // --- Visualize ---
+    let visualizeFiles = $state();
+    let visualizeProcessing = $state(false);
+    /** @type {string | null} */
+    let visualizeImageUrl = $state(null);
+    let visualizeNotice = $state('');
+    let visualizeError = $state('');
 
     onMount(() => {
         token = localStorage.getItem('jwt_token') ?? '';
@@ -18,52 +52,155 @@
         }
     });
 
-    async function embedWatermark() {
+    function logout() {
+        localStorage.removeItem('jwt_token');
+        window.location.href = '/login';
+    }
+
+    /** @param {FileList | undefined} files */
+    function validateImage(files) {
         if (!files || files.length === 0) {
-            errorMessage = 'Wybierz obraz z dysku.';
-            return;
+            return 'Wybierz obraz z dysku.';
         }
-
-        if (!watermarkText || watermarkText.trim() === '') {
-            errorMessage = 'Wpisz tekst, który chcesz ukryć w obrazie.';
-            return;
-        }
-
         if (files[0].size < 100) {
-             errorMessage = 'Wybrany plik jest zbyt mały lub uszkodzony.';
-             return;
+            return 'Wybrany plik jest zbyt mały lub uszkodzony.';
+        }
+        return '';
+    }
+
+    // Shared POST helper. Sends the selected image (and optional text) with the JWT.
+    /** @param {string} url @param {File} image @param {string} [text] */
+    function postImage(url, image, text) {
+        const formData = new FormData();
+        formData.append('image', image);
+        if (text !== undefined) {
+            formData.append('text', text);
+        }
+        return fetch(url, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData
+        });
+    }
+
+    /** @param {Response} response */
+    async function readError(response) {
+        try {
+            const data = await response.json();
+            return data.error || data.message || 'Wystąpił błąd podczas przetwarzania.';
+        } catch {
+            return 'Wystąpił błąd podczas przetwarzania.';
+        }
+    }
+
+    async function embedWatermark() {
+        const validation = validateImage(embedFiles);
+        if (validation) { embedError = validation; return; }
+        if (!watermarkText || watermarkText.trim() === '') {
+            embedError = 'Wpisz tekst, który chcesz ukryć w obrazie.';
+            return;
         }
 
-        errorMessage = '';
-        isProcessing = true;
+        embedError = '';
+        embedProcessing = true;
         resultImageUrl = null;
         classification = null;
 
-        const formData = new FormData();
-        formData.append('image', files[0]);
-        formData.append('text', watermarkText);
-
         try {
-            const response = await fetch('/api/watermark/embed', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                },
-                body: formData
-            });
-
+            const response = await postImage('/api/watermark/embed', embedFiles[0], watermarkText);
             if (response.ok) {
                 classification = readClassification(response.headers);
-                const blob = await response.blob();
-                resultImageUrl = URL.createObjectURL(blob);
+                resultImageUrl = URL.createObjectURL(await response.blob());
             } else {
-                const errorData = await response.json();
-                errorMessage = errorData.error || errorData.message || 'Błąd podczas przetwarzania obrazu.';
+                embedError = await readError(response);
             }
-        } catch (error) {
-            errorMessage = 'Błąd połączenia z serwerem.';
+        } catch {
+            embedError = 'Błąd połączenia z serwerem.';
         } finally {
-            isProcessing = false;
+            embedProcessing = false;
+        }
+    }
+
+    async function detectWatermark() {
+        const validation = validateImage(detectFiles);
+        if (validation) { detectError = validation; return; }
+
+        detectError = '';
+        detectProcessing = true;
+        detectResult = null;
+
+        try {
+            const response = await postImage('/api/watermark/detect', detectFiles[0]);
+            if (response.ok) {
+                detectResult = await response.json();
+            } else {
+                detectError = await readError(response);
+            }
+        } catch {
+            detectError = 'Błąd połączenia z serwerem.';
+        } finally {
+            detectProcessing = false;
+        }
+    }
+
+    async function extractWatermark() {
+        const validation = validateImage(extractFiles);
+        if (validation) { extractError = validation; return; }
+
+        extractError = '';
+        extractProcessing = true;
+        extractResult = null;
+
+        try {
+            const response = await postImage('/api/watermark/extract', extractFiles[0]);
+            if (response.ok) {
+                extractResult = await response.json();
+            } else if (response.status === 403) {
+                extractError = 'Nie jesteś właścicielem tego znaku wodnego – nie możesz odczytać ukrytej treści.';
+            } else {
+                extractError = await readError(response);
+            }
+        } catch {
+            extractError = 'Błąd połączenia z serwerem.';
+        } finally {
+            extractProcessing = false;
+        }
+    }
+
+    // Visualize runs detect first: there is nothing to highlight in an image that
+    // carries no watermark, so we short-circuit with a friendly notice instead.
+    async function visualizeWatermark() {
+        const validation = validateImage(visualizeFiles);
+        if (validation) { visualizeError = validation; return; }
+
+        visualizeError = '';
+        visualizeNotice = '';
+        visualizeProcessing = true;
+        visualizeImageUrl = null;
+
+        try {
+            const detectResponse = await postImage('/api/watermark/detect', visualizeFiles[0]);
+            if (!detectResponse.ok) {
+                visualizeError = await readError(detectResponse);
+                return;
+            }
+
+            const detection = await detectResponse.json();
+            if (!detection.watermarked) {
+                visualizeNotice = 'Ten obraz nie zawiera ukrytego znaku wodnego – nie ma czego wizualizować.';
+                return;
+            }
+
+            const response = await postImage('/api/watermark/visualize', visualizeFiles[0]);
+            if (response.ok) {
+                visualizeImageUrl = URL.createObjectURL(await response.blob());
+            } else {
+                visualizeError = await readError(response);
+            }
+        } catch {
+            visualizeError = 'Błąd połączenia z serwerem.';
+        } finally {
+            visualizeProcessing = false;
         }
     }
 
@@ -85,11 +222,6 @@
             confidence: confidence ? Math.round(parseFloat(confidence) * 100) : null
         };
     }
-
-    function logout() {
-        localStorage.removeItem('jwt_token');
-        window.location.href = '/login';
-    }
 </script>
 
 <main class="container">
@@ -98,55 +230,165 @@
         <button class="btn btn-outline" onclick={logout}>Wyloguj</button>
     </header>
 
-    <div class="card">
-        <h3>Osadź znak wodny</h3>
-        <p class="subtitle">Wybierz obraz i wpisz tajną wiadomość, która zostanie w nim niewidocznie ukryta.</p>
+    <nav class="tabs">
+        {#each tabs as tab}
+            <button
+                class="tab"
+                class:active={activeTab === tab.id}
+                onclick={() => (activeTab = tab.id)}
+            >
+                {tab.label}
+            </button>
+        {/each}
+    </nav>
 
-        <div class="form-group">
-            <label for="file-upload">Obraz bazowy (PNG/JPG):</label>
-            <input id="file-upload" type="file" accept="image/png, image/jpeg" bind:files class="input-file" />
+    {#if activeTab === 'embed'}
+        <div class="card">
+            <h3>Osadź znak wodny</h3>
+            <p class="subtitle">Wybierz obraz i wpisz tajną wiadomość, która zostanie w nim niewidocznie ukryta.</p>
+
+            <div class="form-group">
+                <label for="embed-file">Obraz bazowy (PNG/JPG):</label>
+                <input id="embed-file" type="file" accept="image/png, image/jpeg" bind:files={embedFiles} class="input-file" />
+            </div>
+
+            <div class="form-group">
+                <label for="watermark-text">Ukryty tekst:</label>
+                <input id="watermark-text" type="text" bind:value={watermarkText} placeholder="Np. Prawa autorskie - Jan Kowalski" class="input-text" />
+            </div>
+
+            <button class="btn btn-primary" onclick={embedWatermark} disabled={embedProcessing}>
+                {embedProcessing ? '⏳ Przetwarzanie...' : '✨ Generuj obraz'}
+            </button>
+
+            {#if embedError}
+                <div class="alert alert-error"><strong>Błąd:</strong> {embedError}</div>
+            {/if}
         </div>
 
-        <div class="form-group">
-            <label for="watermark-text">Ukryty tekst:</label>
-            <input id="watermark-text" type="text" bind:value={watermarkText} placeholder="Np. Prawa autorskie - Jan Kowalski" class="input-text" />
-        </div>
+        {#if resultImageUrl}
+            <div class="card result-card">
+                <h3>Oto twój zabezpieczony obraz:</h3>
 
-        <button class="btn btn-primary" onclick={embedWatermark} disabled={isProcessing}>
-            {isProcessing ? '⏳ Przetwarzanie...' : '✨ Generuj obraz'}
-        </button>
+                {#if classification}
+                    <div class="classification">
+                        <span class="classification-label">Wykryta klasa:</span>
+                        <span class="classification-category">{classification.category}</span>
+                        {#if classification.label}
+                            <span class="classification-detail">({classification.label})</span>
+                        {/if}
+                        {#if classification.confidence !== null}
+                            <span class="classification-confidence">{classification.confidence}%</span>
+                        {/if}
+                    </div>
+                {/if}
 
-        {#if errorMessage}
-            <div class="alert alert-error">
-                <strong>Błąd:</strong> {errorMessage}
+                <div class="image-wrapper">
+                    <img src={resultImageUrl} alt="Obraz ze znakiem wodnym" />
+                </div>
+                <a href={resultImageUrl} download="watermarked_image.png" class="download-link">
+                    <button class="btn btn-success">⬇️ Pobierz obraz</button>
+                </a>
             </div>
         {/if}
-    </div>
+    {:else if activeTab === 'detect'}
+        <div class="card">
+            <h3>Wykryj znak wodny</h3>
+            <p class="subtitle">Sprawdź, czy obraz zawiera znak wodny osadzony przez ten serwis.</p>
 
-    {#if resultImageUrl}
-        <div class="card result-card">
-            <h3>Oto twój zabezpieczony obraz:</h3>
-
-            {#if classification}
-                <div class="classification">
-                    <span class="classification-label">Wykryta klasa:</span>
-                    <span class="classification-category">{classification.category}</span>
-                    {#if classification.label}
-                        <span class="classification-detail">({classification.label})</span>
-                    {/if}
-                    {#if classification.confidence !== null}
-                        <span class="classification-confidence">{classification.confidence}%</span>
-                    {/if}
-                </div>
-            {/if}
-
-            <div class="image-wrapper">
-                <img src={resultImageUrl} alt="Obraz ze znakiem wodnym" />
+            <div class="form-group">
+                <label for="detect-file">Obraz do sprawdzenia (PNG/JPG):</label>
+                <input id="detect-file" type="file" accept="image/png, image/jpeg" bind:files={detectFiles} class="input-file" />
             </div>
-            <a href={resultImageUrl} download="watermarked_image.png" class="download-link">
-                <button class="btn btn-success">⬇️ Pobierz obraz</button>
-            </a>
+
+            <button class="btn btn-primary" onclick={detectWatermark} disabled={detectProcessing}>
+                {detectProcessing ? '⏳ Sprawdzanie...' : '🔍 Sprawdź'}
+            </button>
+
+            {#if detectError}
+                <div class="alert alert-error"><strong>Błąd:</strong> {detectError}</div>
+            {/if}
         </div>
+
+        {#if detectResult}
+            <div class="card result-card">
+                {#if detectResult.watermarked}
+                    <div class="status-badge status-yes">✅ Wykryto znak wodny</div>
+                    <div class="meta">
+                        {#if detectResult.ownerIdentity}
+                            <div><span class="meta-key">Właściciel:</span> {detectResult.ownerIdentity}</div>
+                        {/if}
+                        {#if detectResult.version !== null}
+                            <div><span class="meta-key">Wersja formatu:</span> {detectResult.version}</div>
+                        {/if}
+                    </div>
+                {:else}
+                    <div class="status-badge status-no">❌ Brak znaku wodnego</div>
+                    <p class="subtitle">Ten obraz nie zawiera znaku osadzonego przez ten serwis.</p>
+                {/if}
+            </div>
+        {/if}
+    {:else if activeTab === 'extract'}
+        <div class="card">
+            <h3>Wyodrębnij ukryty tekst</h3>
+            <p class="subtitle">Odczytaj treść ukrytą w obrazie. Dostęp ma tylko właściciel znaku wodnego.</p>
+
+            <div class="form-group">
+                <label for="extract-file">Obraz ze znakiem (PNG/JPG):</label>
+                <input id="extract-file" type="file" accept="image/png, image/jpeg" bind:files={extractFiles} class="input-file" />
+            </div>
+
+            <button class="btn btn-primary" onclick={extractWatermark} disabled={extractProcessing}>
+                {extractProcessing ? '⏳ Odczytywanie...' : '📖 Wyodrębnij tekst'}
+            </button>
+
+            {#if extractError}
+                <div class="alert alert-error"><strong>Błąd:</strong> {extractError}</div>
+            {/if}
+        </div>
+
+        {#if extractResult}
+            <div class="card result-card">
+                <h3>Ukryta treść:</h3>
+                <div class="meta">
+                    <div><span class="meta-key">Właściciel:</span> {extractResult.ownerIdentity}</div>
+                </div>
+                <div class="extracted-text">{extractResult.text}</div>
+            </div>
+        {/if}
+    {:else if activeTab === 'visualize'}
+        <div class="card">
+            <h3>Wizualizuj znak wodny</h3>
+            <p class="subtitle">Podświetla bloki 8×8, w których ukryto dane. Najpierw sprawdzamy, czy obraz w ogóle zawiera znak wodny.</p>
+
+            <div class="form-group">
+                <label for="visualize-file">Obraz do wizualizacji (PNG/JPG):</label>
+                <input id="visualize-file" type="file" accept="image/png, image/jpeg" bind:files={visualizeFiles} class="input-file" />
+            </div>
+
+            <button class="btn btn-primary" onclick={visualizeWatermark} disabled={visualizeProcessing}>
+                {visualizeProcessing ? '⏳ Przetwarzanie...' : '🗺️ Wizualizuj'}
+            </button>
+
+            {#if visualizeNotice}
+                <div class="alert alert-info">{visualizeNotice}</div>
+            {/if}
+            {#if visualizeError}
+                <div class="alert alert-error"><strong>Błąd:</strong> {visualizeError}</div>
+            {/if}
+        </div>
+
+        {#if visualizeImageUrl}
+            <div class="card result-card">
+                <h3>Lokalizacja danych znaku wodnego:</h3>
+                <div class="image-wrapper">
+                    <img src={visualizeImageUrl} alt="Wizualizacja bloków znaku wodnego" />
+                </div>
+                <a href={visualizeImageUrl} download="watermark_visualization.png" class="download-link">
+                    <button class="btn btn-success">⬇️ Pobierz wizualizację</button>
+                </a>
+            </div>
+        {/if}
     {/if}
 </main>
 
@@ -175,6 +417,36 @@
     .header h2 {
         margin: 0;
         color: #2c3e50;
+    }
+
+    .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+    }
+
+    .tab {
+        flex: 1 1 auto;
+        padding: 10px 14px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background-color: #ffffff;
+        color: #4a5568;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .tab:hover:not(.active) {
+        background-color: #edf2f7;
+    }
+
+    .tab.active {
+        background-color: #3182ce;
+        border-color: #3182ce;
+        color: #ffffff;
     }
 
     .card {
@@ -291,6 +563,12 @@
         border-left: 4px solid #f56565;
     }
 
+    .alert-info {
+        background-color: #ebf8ff;
+        color: #2b6cb0;
+        border-left: 4px solid #4299e1;
+    }
+
     .result-card {
         text-align: center;
     }
@@ -330,6 +608,52 @@
         background-color: #f0fff4;
         border-radius: 999px;
         padding: 2px 10px;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 10px 20px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 1.05rem;
+        margin-bottom: 8px;
+    }
+
+    .status-yes {
+        background-color: #f0fff4;
+        color: #2f855a;
+        border: 1px solid #9ae6b4;
+    }
+
+    .status-no {
+        background-color: #fff5f5;
+        color: #c53030;
+        border: 1px solid #feb2b2;
+    }
+
+    .meta {
+        color: #4a5568;
+        font-size: 0.95rem;
+        margin: 8px 0;
+        line-height: 1.6;
+    }
+
+    .meta-key {
+        font-weight: 600;
+        color: #718096;
+    }
+
+    .extracted-text {
+        margin-top: 16px;
+        padding: 16px;
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        color: #1a202c;
+        text-align: left;
+        white-space: pre-wrap;
+        word-break: break-word;
     }
 
     .image-wrapper {
