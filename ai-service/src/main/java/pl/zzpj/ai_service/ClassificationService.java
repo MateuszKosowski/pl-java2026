@@ -51,16 +51,26 @@ public class ClassificationService {
         log.info("Loading MobileNetV2 ONNX model from {}", modelPath);
 
         Path modelFile = Path.of(modelPath);
-        Path synsetFile = modelFile.getParent().resolve("synset.txt");
+        Path parent = modelFile.getParent();
+        Path synsetFile = (parent != null) ? parent.resolve("synset.txt") : Path.of("synset.txt");
+
+        if (!Files.exists(synsetFile)) {
+            throw new IOException("Labels file not found: " + synsetFile.toAbsolutePath());
+        }
 
         labels = Files.readAllLines(synsetFile);
-        log.info("Loaded {} class labels", labels.size());
+        log.info("Loaded {} class labels from {}", labels.size(), synsetFile.getFileName());
 
         environment = OrtEnvironment.getEnvironment();
-        session = environment.createSession(modelPath, new OrtSession.SessionOptions());
+        try {
+            session = environment.createSession(modelPath, new OrtSession.SessionOptions());
+        } catch (OrtException e) {
+            log.error("Failed to create ONNX session for {}: {}", modelPath, e.getMessage());
+            throw e;
+        }
         inputName = session.getInputNames().iterator().next();
 
-        log.info("Model loaded. Input tensor name: '{}'", inputName);
+        log.info("Model loaded successfully. Input tensor name: '{}'", inputName);
     }
 
     /**

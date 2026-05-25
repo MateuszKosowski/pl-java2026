@@ -5,6 +5,8 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,9 +20,11 @@ import pl.zzpj.watermark_service.dto.DetectWatermarkResponse;
 import pl.zzpj.watermark_service.dto.ExtractedTextResponse;
 import pl.zzpj.watermark_service.service.SteganographyService;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.security.Principal;
 import java.util.List;
 
@@ -79,13 +83,14 @@ public class WatermarkController {
             @RequestParam("image") MultipartFile image,
             @RequestParam("text") String text,
             Principal principal
-    ) {
+    ) throws Exception {
+        byte[] imageBytes = image.getBytes();
         String ownerId = principal != null ? principal.getName() : "Unknown-0";
         log.info("Watermark embed requested. Resolved principal ownerId: {}", ownerId);
 
-        ClassificationResult classification = classifyOrFallback(image);
+        ClassificationResult classification = classifyOrFallback(imageBytes, image.getOriginalFilename(), image.getContentType());
 
-        byte[] watermarkedImage = steganographyService.embedMessage(image, text, ownerId);
+        byte[] watermarkedImage = steganographyService.embedMessage(imageBytes, text, ownerId);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
@@ -95,15 +100,41 @@ public class WatermarkController {
                 .body(watermarkedImage);
     }
 
-    private ClassificationResult classifyOrFallback(MultipartFile image) {
+    private ClassificationResult classifyOrFallback(byte[] imageBytes, String originalFilename, String contentType) {
         try {
-            ClassificationResult result = aiServiceFeignClient.classify(image);
+            MultipartFile multipartFile = new ByteArrayMultipartFile(imageBytes, "file", originalFilename, contentType);
+            ClassificationResult result = aiServiceFeignClient.classify(multipartFile);
             log.info("Classification: category={}, label={}, confidence={}",
                     result.category(), result.label(), result.confidence());
             return result;
         } catch (Exception ex) {
             log.warn("AI classification failed, continuing without metadata: {}", ex.getMessage());
             return UNKNOWN_CLASSIFICATION;
+        }
+    }
+
+    private static class ByteArrayMultipartFile implements MultipartFile {
+        private final byte[] content;
+        private final String name;
+        private final String originalFilename;
+        private final String contentType;
+
+        public ByteArrayMultipartFile(byte[] content, String name, String originalFilename, String contentType) {
+            this.content = content;
+            this.name = name;
+            this.originalFilename = originalFilename;
+            this.contentType = contentType;
+        }
+
+        @Override public String getName() { return name; }
+        @Override public String getOriginalFilename() { return originalFilename; }
+        @Override public String getContentType() { return contentType; }
+        @Override public boolean isEmpty() { return content == null || content.length == 0; }
+        @Override public long getSize() { return content.length; }
+        @Override public byte[] getBytes() { return content; }
+        @Override public InputStream getInputStream() { return new ByteArrayInputStream(content); }
+        @Override public void transferTo(File dest) throws IOException {
+            Files.write(dest.toPath(), content);
         }
     }
 
