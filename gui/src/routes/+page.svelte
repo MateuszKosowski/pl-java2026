@@ -35,6 +35,7 @@
     let extractProcessing = $state(false);
     /** @type {{ ownerIdentity: string, text: string } | null} */
     let extractResult = $state(null);
+    let extractNotice = $state('');
     let extractError = $state('');
 
     // --- Visualize ---
@@ -143,15 +144,30 @@
         }
     }
 
+    // Extract checks for a watermark first, mirroring the visualize flow: an image
+    // with nothing hidden gets a friendly notice instead of a raw backend error.
     async function extractWatermark() {
         const validation = validateImage(extractFiles);
         if (validation) { extractError = validation; return; }
 
         extractError = '';
+        extractNotice = '';
         extractProcessing = true;
         extractResult = null;
 
         try {
+            const detectResponse = await postImage('/api/watermark/detect', extractFiles[0]);
+            if (!detectResponse.ok) {
+                extractError = await readError(detectResponse);
+                return;
+            }
+
+            const detection = await detectResponse.json();
+            if (!detection.watermarked) {
+                extractNotice = 'Ten obraz nie zawiera ukrytego znaku wodnego – nie ma czego odczytać.';
+                return;
+            }
+
             const response = await postImage('/api/watermark/extract', extractFiles[0]);
             if (response.ok) {
                 extractResult = await response.json();
@@ -342,6 +358,9 @@
                 {extractProcessing ? '⏳ Odczytywanie...' : '📖 Wyodrębnij tekst'}
             </button>
 
+            {#if extractNotice}
+                <div class="alert alert-info">{extractNotice}</div>
+            {/if}
             {#if extractError}
                 <div class="alert alert-error"><strong>Błąd:</strong> {extractError}</div>
             {/if}
