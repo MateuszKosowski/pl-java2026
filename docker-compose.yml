@@ -127,6 +127,20 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  gui:
+    build:
+      context: ./gui
+      dockerfile: Dockerfile
+    container_name: gui
+    ports:
+      - "5173:80"
+    depends_on:
+      auth-server:
+        condition: service_started
+      watermark-service:
+        condition: service_started
+    restart: unless-stopped
+
   sonarqube-db:
     image: postgres:16
     container_name: sonarqube-db
