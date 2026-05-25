@@ -83,10 +83,26 @@ public class SteganographyService {
      * @return generated PNG bytes containing the watermark
      */
     public byte[] embedMessage(MultipartFile file, String message, String ownerIdentity) {
+        try {
+            return embedMessage(file.getBytes(), message, ownerIdentity);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Could not read image bytes", e);
+        }
+    }
+
+    /**
+     * Embeds a watermark into the provided image bytes.
+     *
+     * @param imageBytes    source image bytes
+     * @param message       text payload to embed
+     * @param ownerIdentity owner identifier stored with the watermark
+     * @return generated PNG bytes containing the watermark
+     */
+    public byte[] embedMessage(byte[] imageBytes, String message, String ownerIdentity) {
         validateOwnerIdentity(ownerIdentity);
         validateMessage(message);
         try {
-            BufferedImage image = readImage(file.getBytes());
+            BufferedImage image = readImage(imageBytes);
             log.info("Embedding watermark: ownerIdentity={}, imageSize={}x{}, textLength={}",
                     ownerIdentity, image.getWidth(), image.getHeight(), message.length());
             BufferedImage watermarked = embedMessage(image, message, ownerIdentity);

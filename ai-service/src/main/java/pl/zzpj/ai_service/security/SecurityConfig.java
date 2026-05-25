@@ -1,4 +1,4 @@
-package pl.zzpj.watermark_service.security;
+package pl.zzpj.ai_service.security;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
