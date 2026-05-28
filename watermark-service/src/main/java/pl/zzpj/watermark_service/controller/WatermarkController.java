@@ -36,7 +36,7 @@ public class WatermarkController {
     private static final Logger log = LoggerFactory.getLogger(WatermarkController.class);
 
     private static final ClassificationResult UNKNOWN_CLASSIFICATION =
-            new ClassificationResult("unknown", "unknown", 0.0, List.of());
+            new ClassificationResult("unknown", "unknown", 0.0, 0.0, List.of());
 
     private final SteganographyService steganographyService;
     private final AiServiceFeignClient aiServiceFeignClient;
@@ -97,6 +97,7 @@ public class WatermarkController {
                 .header("X-Image-Category", classification.category())
                 .header("X-Image-Label", classification.label())
                 .header("X-Image-Confidence", String.valueOf(classification.confidence()))
+                .header("X-Image-Category-Confidence", String.valueOf(classification.categoryConfidence()))
                 .body(watermarkedImage);
     }
 

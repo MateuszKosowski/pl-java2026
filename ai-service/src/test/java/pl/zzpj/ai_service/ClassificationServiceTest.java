@@ -44,6 +44,11 @@ class ClassificationServiceTest {
                 "Samoyed image should map to 'dog' category, got label='" + result.label() + "'");
         assertTrue(result.confidence() > 0.1,
                 "Top-1 confidence should be > 0.1, got " + result.confidence());
+        assertTrue(result.categoryConfidence() >= result.confidence(),
+                "categoryConfidence should be >= top-1 confidence when top-1 is in the category, got "
+                        + result.categoryConfidence() + " vs " + result.confidence());
+        assertTrue(result.categoryConfidence() <= 1.0,
+                "categoryConfidence must not exceed 1.0, got " + result.categoryConfidence());
         assertEquals(3, result.top3().size());
         assertTrue(result.top3().get(0).confidence() >= result.top3().get(1).confidence(),
                 "top3 must be sorted by descending confidence");

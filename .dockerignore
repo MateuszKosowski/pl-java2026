@@ -1,0 +1,25 @@
+# Python local virtualenvs — these are huge (torch/cuda wheels)
+# and never needed in Docker build context
+**/.venv/
+**/venv/
+**/test_env/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+
+# Gradle build artifacts (each service builds its own jar inside the image)
+**/build/
+**/.gradle/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Git / docs (most services don't need)
+.git/
+*.md
+docs/
+
+# Local
+.env

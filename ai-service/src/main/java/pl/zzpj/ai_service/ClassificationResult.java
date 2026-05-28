@@ -14,6 +14,7 @@ public record ClassificationResult(
         String label,
         String category,
         double confidence,
+        double categoryConfidence,
         List<TopPrediction> top3
 ) {
     /**

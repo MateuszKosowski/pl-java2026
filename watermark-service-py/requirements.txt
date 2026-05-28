@@ -1,0 +1,15 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+invisible-watermark==0.2.0
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+Pillow==11.0.0
+py-eureka-client==0.11.13
+httpx==0.28.1
+pydantic-settings==2.7.0
+cryptography==44.0.0
+reedsolo==1.7.0
+pytest==8.3.4
+pytest-asyncio==0.25.0
+respx==0.22.0
