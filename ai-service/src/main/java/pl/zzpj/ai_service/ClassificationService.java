@@ -40,6 +40,7 @@ public class ClassificationService {
     private OrtEnvironment environment;
     private OrtSession session;
     private List<String> labels;
+    private String[] labelCategories;
     private String inputName;
 
     /**
@@ -59,6 +60,7 @@ public class ClassificationService {
         }
 
         labels = Files.readAllLines(synsetFile);
+        labelCategories = labels.stream().map(CategoryMapper::map).toArray(String[]::new);
         log.info("Loaded {} class labels from {}", labels.size(), synsetFile.getFileName());
 
         environment = OrtEnvironment.getEnvironment();
@@ -100,13 +102,23 @@ public class ClassificationService {
 
         String bestLabel = labels.get(topIndices[0]);
         double bestConfidence = round4(probs[topIndices[0]]);
-        String category = CategoryMapper.map(bestLabel);
+        String category = labelCategories[topIndices[0]];
+
+        double categoryConfidence = 0.0;
+        if (!"other".equals(category)) {
+            for (int i = 0; i < probs.length; i++) {
+                if (category.equals(labelCategories[i])) {
+                    categoryConfidence += probs[i];
+                }
+            }
+        }
 
         List<ClassificationResult.TopPrediction> top3 = Arrays.stream(topIndices)
                 .mapToObj(i -> new ClassificationResult.TopPrediction(labels.get(i), round4(probs[i])))
                 .toList();
 
-        return new ClassificationResult(bestLabel, category, bestConfidence, top3);
+        double clampedCategoryConfidence = Math.min(1.0, categoryConfidence);
+        return new ClassificationResult(bestLabel, category, bestConfidence, round4(clampedCategoryConfidence), top3);
     }
 
     private float[] preprocess(InputStream is) throws IOException {

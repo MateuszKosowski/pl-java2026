@@ -1,5 +1,18 @@
 .env
 
+docs/superpowers/
+
+# Python
+**/.venv/
+**/venv/
+**/test_env/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Created by https://www.toptal.com/developers/gitignore/api/linux,windows,java,gradle,intellij,visualstudiocode,netbeans
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,windows,java,gradle,intellij,visualstudiocode,netbeans
 

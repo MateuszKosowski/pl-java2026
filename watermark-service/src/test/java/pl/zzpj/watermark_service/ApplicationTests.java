@@ -65,6 +65,7 @@ class ApplicationTests {
                         "test-label",
                         "test-category",
                         0.99,
+                        0.99,
                         List.of(new ClassificationResult.TopPrediction("test-label", 0.99))
                 )
         );

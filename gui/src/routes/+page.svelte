@@ -19,9 +19,16 @@
     let embedProcessing = $state(false);
     /** @type {string | null} */
     let resultImageUrl = $state(null);
-    /** @type {{ category: string, label: string | null, confidence: number | null } | null} */
+    /** @type {{ category: string, label: string | null, confidence: number | null, categoryConfidence: number | null } | null} */
     let classification = $state(null);
     let embedError = $state('');
+    /** @type {{ maxTextBytes: number, minImageWidth: number, minImageHeight: number, imageWidth: number, imageHeight: number, imageOk: boolean, lengthBits: number } | null} */
+    let capacity = $state(null);
+    let capacityChecking = $state(false);
+    /** @type {string | null} */
+    let capacityError = $state(null);
+    /** @type {AbortController | null} */
+    let capacityAbort = null;
 
     // --- Detect ---
     let detectFiles = $state();
@@ -94,11 +101,90 @@
         }
     }
 
+    // Bytes-not-chars: backend measures payload in UTF-8 bytes, so multibyte
+    // characters (ą, ł, emoji) eat more capacity than ASCII. Mirror that here.
+    const textEncoder = new TextEncoder();
+    /** @param {string} text */
+    function utf8ByteLength(text) {
+        return textEncoder.encode(text).length;
+    }
+
+    let lastProbedFileSignature = '';
+
+    /** @param {File} file */
+    function fileSignature(file) {
+        return `${file.name}|${file.size}|${file.lastModified}`;
+    }
+
+    async function probeCapacity() {
+        if (!embedFiles || embedFiles.length === 0) return;
+        // Cancel any in-flight probe so an earlier file's response can't overwrite
+        // state for a newer selection.
+        capacityAbort?.abort();
+        const controller = new AbortController();
+        capacityAbort = controller;
+        capacity = null;
+        capacityError = null;
+        capacityChecking = true;
+        try {
+            const formData = new FormData();
+            formData.append('image', embedFiles[0]);
+            const response = await fetch('/api/watermark/capacity', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+                signal: controller.signal
+            });
+            if (controller.signal.aborted) return;
+            if (response.ok) {
+                capacity = await response.json();
+            } else {
+                capacityError = await readError(response);
+            }
+        } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
+            capacityError = 'Nie udało się sprawdzić pojemności obrazu.';
+        } finally {
+            if (capacityAbort === controller) {
+                capacityAbort = null;
+                capacityChecking = false;
+            }
+        }
+    }
+
+    $effect(() => {
+        // Refetch capacity only when the user actually picked a new file —
+        // re-binding the same FileList shouldn't trigger another upload.
+        if (embedFiles && embedFiles.length > 0) {
+            const sig = fileSignature(embedFiles[0]);
+            if (sig !== lastProbedFileSignature) {
+                lastProbedFileSignature = sig;
+                probeCapacity();
+            }
+        } else {
+            lastProbedFileSignature = '';
+            capacity = null;
+            capacityError = null;
+        }
+    });
+
     async function embedWatermark() {
         const validation = validateImage(embedFiles);
         if (validation) { embedError = validation; return; }
         if (!watermarkText || watermarkText.trim() === '') {
             embedError = 'Wpisz tekst, który chcesz ukryć w obrazie.';
+            return;
+        }
+        if (capacityChecking) {
+            embedError = 'Poczekaj na sprawdzenie pojemności obrazu.';
+            return;
+        }
+        if (capacity && !capacity.imageOk) {
+            embedError = `Obraz jest za mały (${capacity.imageWidth}×${capacity.imageHeight}). Minimum to ${capacity.minImageWidth}×${capacity.minImageHeight} px.`;
+            return;
+        }
+        if (capacity && utf8ByteLength(watermarkText) > capacity.maxTextBytes) {
+            embedError = `Tekst jest za długi — maksymalnie ${capacity.maxTextBytes} bajtów dla tego obrazu.`;
             return;
         }
 
@@ -227,15 +313,19 @@
         const category = headers.get('X-Image-Category');
         const label = headers.get('X-Image-Label');
         const confidence = headers.get('X-Image-Confidence');
+        const categoryConfidence = headers.get('X-Image-Category-Confidence');
 
         if (!category || category === 'unknown') {
             return null;
         }
 
+        const toPercent = (v) => (v ? Math.round(parseFloat(v) * 100) : null);
+
         return {
             category,
             label: label && label !== 'unknown' ? label : null,
-            confidence: confidence ? Math.round(parseFloat(confidence) * 100) : null
+            confidence: toPercent(confidence),
+            categoryConfidence: toPercent(categoryConfidence)
         };
     }
 </script>
@@ -261,19 +351,44 @@
     {#if activeTab === 'embed'}
         <div class="card">
             <h3>Osadź znak wodny</h3>
-            <p class="subtitle">Wybierz obraz i wpisz tajną wiadomość, która zostanie w nim niewidocznie ukryta.</p>
+            <p class="subtitle">Wybierz obraz PNG i wpisz tajną wiadomość, która zostanie w nim niewidocznie ukryta.</p>
+
+            <p class="hint">Plik wynikowy zostaje PNG-iem — kompresja JPG, screenshot lub edycja usuwa znak wodny.</p>
 
             <div class="form-group">
-                <label for="embed-file">Obraz bazowy (PNG/JPG):</label>
-                <input id="embed-file" type="file" accept="image/png, image/jpeg" bind:files={embedFiles} class="input-file" />
+                <label for="embed-file">Obraz bazowy (PNG):</label>
+                <input id="embed-file" type="file" accept="image/png" bind:files={embedFiles} class="input-file" />
             </div>
 
+            {#if capacityChecking}
+                <div class="capacity-info capacity-info--pending">⏳ Sprawdzanie pojemności obrazu…</div>
+            {:else if capacityError}
+                <div class="capacity-info capacity-info--error">⚠️ {capacityError}</div>
+            {:else if capacity && !capacity.imageOk}
+                <div class="capacity-info capacity-info--error">
+                    ⚠️ Obraz jest za mały: <strong>{capacity.imageWidth}×{capacity.imageHeight} px</strong>.
+                    Minimum to <strong>{capacity.minImageWidth}×{capacity.minImageHeight} px</strong>.
+                </div>
+            {:else if capacity}
+                <div class="capacity-info" role="status" aria-live="polite">
+                    📐 <strong>{capacity.imageWidth}×{capacity.imageHeight} px</strong> — możesz ukryć maksymalnie
+                    <strong>{capacity.maxTextBytes} bajtów</strong> (znaki ASCII = 1 bajt, polskie znaki = 2 bajty).
+                </div>
+            {/if}
+
             <div class="form-group">
-                <label for="watermark-text">Ukryty tekst:</label>
+                <label for="watermark-text">
+                    Ukryty tekst:
+                    {#if capacity && capacity.imageOk}
+                        <span class="char-counter" class:char-counter--over={utf8ByteLength(watermarkText) > capacity.maxTextBytes}>
+                            {utf8ByteLength(watermarkText)} / {capacity.maxTextBytes} B
+                        </span>
+                    {/if}
+                </label>
                 <input id="watermark-text" type="text" bind:value={watermarkText} placeholder="Np. Prawa autorskie - Jan Kowalski" class="input-text" />
             </div>
 
-            <button class="btn btn-primary" onclick={embedWatermark} disabled={embedProcessing}>
+            <button class="btn btn-primary" onclick={embedWatermark} disabled={embedProcessing || capacityChecking || (capacity !== null && !capacity.imageOk)}>
                 {embedProcessing ? '⏳ Przetwarzanie...' : '✨ Generuj obraz'}
             </button>
 
@@ -290,11 +405,13 @@
                     <div class="classification">
                         <span class="classification-label">Wykryta klasa:</span>
                         <span class="classification-category">{classification.category}</span>
-                        {#if classification.label}
-                            <span class="classification-detail">({classification.label})</span>
+                        {#if classification.categoryConfidence !== null && classification.categoryConfidence > 0}
+                            <span class="classification-confidence">{classification.categoryConfidence}%</span>
                         {/if}
-                        {#if classification.confidence !== null}
-                            <span class="classification-confidence">{classification.confidence}%</span>
+                        {#if classification.label}
+                            <span class="classification-detail">
+                                · {classification.label}{classification.confidence !== null ? ` (${classification.confidence}%)` : ''}
+                            </span>
                         {/if}
                     </div>
                 {/if}
@@ -303,14 +420,15 @@
                     <img src={resultImageUrl} alt="Obraz ze znakiem wodnym" />
                 </div>
                 <a href={resultImageUrl} download="watermarked_image.png" class="download-link">
-                    <button class="btn btn-success">⬇️ Pobierz obraz</button>
+                    <button class="btn btn-success">⬇️ Pobierz obraz (PNG)</button>
                 </a>
+                <p class="hint hint--result">Trzymaj jako PNG — rekompresja niszczy znak.</p>
             </div>
         {/if}
     {:else if activeTab === 'detect'}
         <div class="card">
             <h3>Wykryj znak wodny</h3>
-            <p class="subtitle">Sprawdź, czy obraz zawiera znak wodny osadzony przez ten serwis.</p>
+            <p class="subtitle">Sprawdź, czy obraz zawiera znak wodny osadzony przez ten serwis. Działa tylko na nieprzetworzonym PNG-u.</p>
 
             <div class="form-group">
                 <label for="detect-file">Obraz do sprawdzenia (PNG/JPG):</label>
@@ -347,7 +465,7 @@
     {:else if activeTab === 'extract'}
         <div class="card">
             <h3>Wyodrębnij ukryty tekst</h3>
-            <p class="subtitle">Odczytaj treść ukrytą w obrazie. Dostęp ma tylko właściciel znaku wodnego.</p>
+            <p class="subtitle">Odczytaj treść ukrytą w obrazie. Dostęp ma tylko właściciel znaku wodnego. Działa tylko na nieprzetworzonym PNG-u.</p>
 
             <div class="form-group">
                 <label for="extract-file">Obraz ze znakiem (PNG/JPG):</label>
@@ -378,7 +496,7 @@
     {:else if activeTab === 'visualize'}
         <div class="card">
             <h3>Wizualizuj znak wodny</h3>
-            <p class="subtitle">Podświetla bloki 8×8, w których ukryto dane. Najpierw sprawdzamy, czy obraz w ogóle zawiera znak wodny.</p>
+            <p class="subtitle">Mapa cieplna pokazuje, gdzie w obrazie zostały zapisane dane. Działa tylko na nieprzetworzonym PNG-u.</p>
 
             <div class="form-group">
                 <label for="visualize-file">Obraz do wizualizacji (PNG/JPG):</label>
@@ -500,6 +618,44 @@
         margin-bottom: 8px;
         font-size: 0.9rem;
         color: #4a5568;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .capacity-info {
+        background-color: #ebf8ff;
+        border: 1px solid #bee3f8;
+        color: #2c5282;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        margin-bottom: 20px;
+    }
+
+    .capacity-info--pending {
+        background-color: #f7fafc;
+        border-color: #e2e8f0;
+        color: #718096;
+    }
+
+    .capacity-info--error {
+        background-color: #fff5f5;
+        border-color: #feb2b2;
+        color: #9b2c2c;
+    }
+
+    .char-counter {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #718096;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .char-counter--over {
+        color: #c53030;
+        font-weight: 700;
     }
 
     .input-text, .input-file {
@@ -586,6 +742,18 @@
         background-color: #ebf8ff;
         color: #2b6cb0;
         border-left: 4px solid #4299e1;
+    }
+
+    .hint {
+        margin: -8px 0 16px;
+        font-size: 0.8rem;
+        color: #64748b; /* slate-500, ~5.7:1 on white — meets WCAG AA */
+        line-height: 1.45;
+    }
+
+    .hint--result {
+        margin: 14px 0 0;
+        text-align: center;
     }
 
     .result-card {

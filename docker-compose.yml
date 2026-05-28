@@ -89,18 +89,27 @@ services:
 
   watermark-service:
     build:
-      context: .
-      dockerfile: watermark-service/Dockerfile
+      context: ./watermark-service-py
+      dockerfile: Dockerfile
     container_name: watermark-service
     environment:
-      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://eureka-server:8761/eureka/
+      AUTH_SERVER_URL: http://auth-server:8081
+      AI_SERVICE_URL: http://ai-service:8084
+      WATERMARK_APP_KEY: ${WATERMARK_APP_KEY:-local-dev-watermark-secret}
+      # Acknowledges the dev-default app key fallback above so the service boots.
+      # In production, set WATERMARK_APP_KEY to a real secret and leave this unset.
+      WATERMARK_DEV_MODE: "true"
+      INSTANCE_HOSTNAME: watermark-service
     ports:
       - "8082:8082"
     depends_on:
       config-server:
         condition: service_healthy
       eureka-server:
+        condition: service_started
+      auth-server:
         condition: service_started
       ai-service:
         condition: service_started
