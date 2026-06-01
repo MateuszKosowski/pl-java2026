@@ -39,6 +39,10 @@ services:
     environment:
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
       SERVER_PORT: 8761
+      SPRING_SECURITY_USER_NAME: ${EUREKA_USER}
+      SPRING_SECURITY_USER_PASSWORD: ${EUREKA_PASSWORD}
+      EUREKA_USER: ${EUREKA_USER}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       EUREKA_CLIENT_REGISTERWITHEUREKA: "false"
       EUREKA_CLIENT_FETCHREGISTRY: "false"
     ports:
@@ -59,7 +63,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      EUREKA_URL: http://eureka-server:8761/eureka/
+      EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
+      EUREKA_USER: ${EUREKA_USER}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       JAVA_TOOL_OPTIONS: -Dspring.profiles.active=default
     ports:
       - "8081:8081"
@@ -79,7 +85,9 @@ services:
     container_name: ai-service
     environment:
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
-      EUREKA_URL: http://eureka-server:8761/eureka/
+      EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
+      EUREKA_USER: ${EUREKA_USER}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
     depends_on:
       config-server:
         condition: service_healthy
@@ -94,7 +102,9 @@ services:
     container_name: watermark-service
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
-      EUREKA_URL: http://eureka-server:8761/eureka/
+      EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
+      EUREKA_USER: ${EUREKA_USER}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       AUTH_SERVER_URL: http://auth-server:8081
       AI_SERVICE_URL: http://ai-service:8084
       WATERMARK_APP_KEY: ${WATERMARK_APP_KEY:-local-dev-watermark-secret}
@@ -122,7 +132,9 @@ services:
     container_name: watermark-client
     environment:
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
-      EUREKA_URL: http://eureka-server:8761/eureka/
+      EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
+      EUREKA_USER: ${EUREKA_USER}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
     ports:
       - "8083:8083"
     depends_on:
