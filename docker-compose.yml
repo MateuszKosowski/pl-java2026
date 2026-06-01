@@ -21,11 +21,13 @@ services:
       SERVER_PORT: 8888
       SPRING_CLOUD_CONFIG_SERVER_GIT_TIMEOUT: 30
       SPRING_CLOUD_CONFIG_SERVER_GIT_CLONE_TIMEOUT: 120
+      CONFIG_SERVER_USER: ${CONFIG_SERVER_USER}
+      CONFIG_SERVER_PASSWORD: ${CONFIG_SERVER_PASSWORD}
       JAVA_TOOL_OPTIONS: -Dgit.timeout=30000
     ports:
       - "8888:8888"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8888/auth-server/default" ]
+      test: [ "CMD", "curl", "-f", "-u", "${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}", "http://localhost:8888/auth-server/default" ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -37,7 +39,7 @@ services:
       dockerfile: eureka-server/Dockerfile
     container_name: eureka-server
     environment:
-      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      SPRING_CONFIG_IMPORT: optional:configserver:http://${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}@config-server:8888
       SERVER_PORT: 8761
       SPRING_SECURITY_USER_NAME: ${EUREKA_USER}
       SPRING_SECURITY_USER_PASSWORD: ${EUREKA_PASSWORD}
@@ -58,14 +60,14 @@ services:
       dockerfile: auth-server/Dockerfile
     container_name: auth-server
     environment:
-      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      SPRING_CONFIG_IMPORT: optional:configserver:http://${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}@config-server:8888
+      EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
+      EUREKA_USER: ${EUREKA_USER}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
-      EUREKA_USER: ${EUREKA_USER}
-      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       JAVA_TOOL_OPTIONS: -Dspring.profiles.active=default
     ports:
       - "8081:8081"
@@ -84,7 +86,7 @@ services:
       dockerfile: ai-service/Dockerfile
     container_name: ai-service
     environment:
-      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      SPRING_CONFIG_IMPORT: optional:configserver:http://${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}@config-server:8888
       EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
       EUREKA_USER: ${EUREKA_USER}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
@@ -101,15 +103,13 @@ services:
       dockerfile: Dockerfile
     container_name: watermark-service
     environment:
-      CONFIG_SERVER_URL: http://config-server:8888
+      CONFIG_SERVER_URL: http://${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}@config-server:8888
       EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
       EUREKA_USER: ${EUREKA_USER}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       AUTH_SERVER_URL: http://auth-server:8081
       AI_SERVICE_URL: http://ai-service:8084
       WATERMARK_APP_KEY: ${WATERMARK_APP_KEY:-local-dev-watermark-secret}
-      # Acknowledges the dev-default app key fallback above so the service boots.
-      # In production, set WATERMARK_APP_KEY to a real secret and leave this unset.
       WATERMARK_DEV_MODE: "true"
       INSTANCE_HOSTNAME: watermark-service
     ports:
@@ -131,7 +131,7 @@ services:
       dockerfile: watermark-client/Dockerfile
     container_name: watermark-client
     environment:
-      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      SPRING_CONFIG_IMPORT: optional:configserver:http://${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}@config-server:8888
       EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
       EUREKA_USER: ${EUREKA_USER}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
@@ -223,4 +223,3 @@ volumes:
   sonarqube_logs:
   gradle_cache:
   postgres_db_data:
-
