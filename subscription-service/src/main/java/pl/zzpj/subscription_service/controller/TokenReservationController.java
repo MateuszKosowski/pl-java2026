@@ -1,0 +1,80 @@
+package pl.zzpj.subscription_service.controller;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import pl.zzpj.subscription_service.application.TokenReservationCommandService;
+import pl.zzpj.subscription_service.application.UserIdentityResolver;
+import pl.zzpj.subscription_service.application.command.CreateTokenReservationCommand;
+import pl.zzpj.subscription_service.controller.dto.CreateTokenReservationRequest;
+import pl.zzpj.subscription_service.controller.dto.TokenReservationErrorResponse;
+import pl.zzpj.subscription_service.controller.dto.TokenReservationResponse;
+import pl.zzpj.subscription_service.domain.token.decision.Accepted;
+import pl.zzpj.subscription_service.domain.token.decision.RejectedInsufficientTokens;
+import pl.zzpj.subscription_service.domain.token.decision.RejectedOperationNotAllowed;
+import pl.zzpj.subscription_service.domain.token.decision.RejectedPlanNotFound;
+import pl.zzpj.subscription_service.domain.token.decision.TokenDecision;
+import pl.zzpj.subscription_service.persistence.entity.TokenReservationEntity;
+
+import java.security.Principal;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/tokens/reservations")
+public class TokenReservationController {
+
+    private final TokenReservationCommandService reservationCommandService;
+    private final UserIdentityResolver userIdentityResolver;
+
+    public TokenReservationController(
+            TokenReservationCommandService reservationCommandService,
+            UserIdentityResolver userIdentityResolver
+    ) {
+        this.reservationCommandService = reservationCommandService;
+        this.userIdentityResolver = userIdentityResolver;
+    }
+
+    @PostMapping
+    public ResponseEntity<?> reserve(
+            Principal principal,
+            @RequestBody CreateTokenReservationRequest request
+    ) {
+        String userId = userIdentityResolver.resolve(principal);
+        TokenDecision decision = reservationCommandService.reserve(
+                userId,
+                new CreateTokenReservationCommand(request.operation(), request.externalOperationId())
+        );
+        return toResponse(decision);
+    }
+
+    @PostMapping("/{reservationId}/consume")
+    public TokenReservationResponse consume(Principal principal, @PathVariable UUID reservationId) {
+        String userId = userIdentityResolver.resolve(principal);
+        TokenReservationEntity reservation = reservationCommandService.consume(userId, reservationId);
+        return TokenReservationResponse.from(reservation);
+    }
+
+    @PostMapping("/{reservationId}/release")
+    public TokenReservationResponse release(Principal principal, @PathVariable UUID reservationId) {
+        String userId = userIdentityResolver.resolve(principal);
+        TokenReservationEntity reservation = reservationCommandService.release(userId, reservationId);
+        return TokenReservationResponse.from(reservation);
+    }
+
+    private ResponseEntity<?> toResponse(TokenDecision decision) {
+        return switch (decision) {
+            case Accepted accepted -> ResponseEntity.status(HttpStatus.CREATED)
+                    .body(TokenReservationResponse.from(accepted.reservation()));
+            case RejectedInsufficientTokens rejected -> ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(TokenReservationErrorResponse.from("INSUFFICIENT_TOKENS", rejected));
+            case RejectedOperationNotAllowed rejected -> ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(TokenReservationErrorResponse.from("OPERATION_NOT_ALLOWED", rejected));
+            case RejectedPlanNotFound rejected -> ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(TokenReservationErrorResponse.from("PLAN_NOT_FOUND", rejected));
+        };
+    }
+}
