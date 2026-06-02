@@ -4,7 +4,14 @@
     let errorMessage = $state('');
     let isLoggingIn = $state(false);
 
-    /** @param {SubmitEvent} event */
+    const demoUsers = [
+        ['admin@gmail.com', 'admin'],
+        ['free@gmail.com', 'free'],
+        ['standard@gmail.com', 'standard'],
+        ['pro@gmail.com', 'pro'],
+        ['lowbalance@gmail.com', 'lowbalance']
+    ];
+
     async function handleLogin(event) {
         event.preventDefault();
         errorMessage = '';
@@ -23,186 +30,161 @@
                 window.location.href = '/';
             } else {
                 const errorText = await response.text();
-                errorMessage = errorText || 'Nieprawidłowy e-mail lub hasło.';
+                errorMessage = errorText || 'Invalid email or password.';
             }
-        } catch (error) {
-            errorMessage = 'Błąd połączenia z serwerem autoryzacji.';
+        } catch {
+            errorMessage = 'Could not connect to auth-server.';
         } finally {
             isLoggingIn = false;
         }
     }
+
+    function useDemo(demoEmail, demoPassword) {
+        email = demoEmail;
+        password = demoPassword;
+    }
 </script>
 
 <main class="container">
-    <div class="login-wrapper">
-        <header class="header">
-            <h1>🔐 Logowanie</h1>
-            <p>Witaj w Systemie Znaków Wodnych</p>
+    <section class="login-card">
+        <header>
+            <h1>StegoCloud Login</h1>
+            <p>Choose a demo account to test subscription limits.</p>
         </header>
 
-        <div class="card">
-            <form onsubmit={handleLogin}>
-                <div class="form-group">
-                    <label for="email">Adres e-mail</label>
-                    <input
-                        id="email"
-                        type="email"
-                        bind:value={email}
-                        required
-                        placeholder="twoj@email.com"
-                        class="input-text"
-                    />
-                </div>
+        <form onsubmit={handleLogin}>
+            <label>
+                <span>Email</span>
+                <input type="email" bind:value={email} required placeholder="user@example.com" />
+            </label>
 
-                <div class="form-group">
-                    <label for="password">Hasło</label>
-                    <input
-                        id="password"
-                        type="password"
-                        bind:value={password}
-                        required
-                        placeholder="••••••••"
-                        class="input-text"
-                    />
-                </div>
+            <label>
+                <span>Password</span>
+                <input type="password" bind:value={password} required placeholder="Password" />
+            </label>
 
-                <button type="submit" class="btn btn-primary" disabled={isLoggingIn}>
-                    {isLoggingIn ? '⏳ Logowanie...' : 'Zaloguj się'}
+            <button type="submit" disabled={isLoggingIn}>
+                {isLoggingIn ? 'Logging in...' : 'Log in'}
+            </button>
+        </form>
+
+        {#if errorMessage}
+            <div class="error">{errorMessage}</div>
+        {/if}
+
+        <div class="demo-list">
+            {#each demoUsers as [demoEmail, demoPassword]}
+                <button type="button" onclick={() => useDemo(demoEmail, demoPassword)}>
+                    {demoEmail.replace('@gmail.com', '')}
                 </button>
-            </form>
-
-            {#if errorMessage}
-                <div class="alert alert-error">
-                    {errorMessage}
-                </div>
-            {/if}
+            {/each}
         </div>
-
-        <footer class="footer-info">
-            <p>Domyślne dane: admin@gmail.com / admin</p>
-        </footer>
-    </div>
+    </section>
 </main>
 
 <style>
     :global(body) {
         margin: 0;
-        padding: 0;
-        background-color: #f4f7f6;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        color: #333;
+        background: #f3f5f7;
+        color: #1f2933;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
     .container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
         min-height: 100vh;
+        display: grid;
+        place-items: center;
         padding: 20px;
     }
 
-    .login-wrapper {
-        width: 100%;
-        max-width: 420px;
+    .login-card {
+        width: min(100%, 430px);
+        background: #fff;
+        border: 1px solid #d9e2ec;
+        border-radius: 8px;
+        padding: 32px;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
     }
 
-    .header {
+    header {
+        margin-bottom: 24px;
         text-align: center;
-        margin-bottom: 30px;
     }
 
-    .header h1 {
+    h1 {
         margin: 0;
-        color: #2c3e50;
-        font-size: 2rem;
+        font-size: 1.7rem;
+        color: #172033;
     }
 
-    .header p {
-        color: #718096;
-        margin-top: 8px;
+    p {
+        margin: 8px 0 0;
+        color: #667085;
     }
 
-    .card {
-        background: #ffffff;
-        border-radius: 12px;
-        padding: 40px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05), 0 5px 10px rgba(0, 0, 0, 0.05);
+    form {
+        display: grid;
+        gap: 16px;
     }
 
-    .form-group {
-        margin-bottom: 25px;
-        display: flex;
-        flex-direction: column;
+    label {
+        display: grid;
+        gap: 7px;
+        font-weight: 700;
     }
 
-    .form-group label {
-        font-weight: 600;
-        margin-bottom: 8px;
-        font-size: 0.9rem;
-        color: #4a5568;
-    }
-
-    .input-text {
-        padding: 12px 16px;
-        border: 1px solid #e2e8f0;
+    input {
+        border: 1px solid #cbd5e1;
         border-radius: 8px;
+        padding: 12px 14px;
         font-size: 1rem;
-        transition: all 0.2s;
-        background-color: #f8fafc;
+        background: #f8fafc;
     }
 
-    .input-text:focus {
+    input:focus {
         outline: none;
-        border-color: #3182ce;
-        background-color: #ffffff;
-        box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+        border-color: #2563eb;
+        background: #fff;
     }
 
-    .btn {
-        padding: 14px 20px;
-        border: none;
+    button {
+        border: 0;
         border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 600;
+        padding: 11px 14px;
+        font-weight: 800;
         cursor: pointer;
-        transition: all 0.2s ease;
-        width: 100%;
-        margin-top: 10px;
     }
 
-    .btn-primary {
-        background-color: #3182ce;
-        color: white;
+    form button {
+        margin-top: 6px;
+        background: #2563eb;
+        color: #fff;
     }
 
-    .btn-primary:hover:not(:disabled) {
-        background-color: #2b6cb0;
-        transform: translateY(-1px);
-    }
-
-    .btn:disabled {
-        background-color: #a0aec0;
+    button:disabled {
+        background: #98a2b3;
         cursor: not-allowed;
     }
 
-    .alert {
-        margin-top: 20px;
-        padding: 12px 16px;
+    .error {
+        margin-top: 16px;
+        padding: 11px 13px;
         border-radius: 8px;
-        font-size: 0.9rem;
-        text-align: center;
+        background: #fff1f2;
+        border: 1px solid #fecdd3;
+        color: #be123c;
     }
 
-    .alert-error {
-        background-color: #fff5f5;
-        color: #c53030;
-        border: 1px solid #feb2b2;
-    }
-
-    .footer-info {
-        text-align: center;
+    .demo-list {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
         margin-top: 20px;
-        font-size: 0.85rem;
-        color: #a0aec0;
+    }
+
+    .demo-list button {
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+        color: #344054;
     }
 </style>

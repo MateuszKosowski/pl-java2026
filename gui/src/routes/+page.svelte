@@ -2,62 +2,79 @@
     import { onMount } from 'svelte';
 
     let token = $state('');
-
-    /** @type {'embed' | 'detect' | 'extract' | 'visualize'} */
     let activeTab = $state('embed');
+    let accountLoading = $state(true);
+    let accountError = $state('');
+    let subscription = $state(null);
+    let tokenBalance = $state(null);
+    let plans = $state([]);
+    let currentRole = $state('USER');
 
-    const tabs = /** @type {const} */ ([
-        { id: 'embed', label: '✨ Osadź' },
-        { id: 'detect', label: '🔍 Wykryj' },
-        { id: 'extract', label: '📖 Wyodrębnij' },
-        { id: 'visualize', label: '🗺️ Wizualizuj' }
-    ]);
+    const tabs = [
+        { id: 'embed', label: 'Embed' },
+        { id: 'detect', label: 'Detect' },
+        { id: 'extract', label: 'Extract' },
+        { id: 'visualize', label: 'Visualize' }
+    ];
 
-    // --- Embed ---
+    const operationCosts = {
+        CAPACITY_CHECK: 0,
+        DETECT: 1,
+        EXTRACT: 2,
+        VISUALIZE: 3,
+        EMBED_768: 5,
+        EMBED_1024: 8,
+        AI_CLASSIFICATION: 2
+    };
+
+    const operationLabels = {
+        CAPACITY_CHECK: 'Capacity check',
+        DETECT: 'Detect',
+        EXTRACT: 'Extract',
+        VISUALIZE: 'Visualize',
+        EMBED_768: 'Embed basic',
+        EMBED_1024: 'Embed large',
+        AI_CLASSIFICATION: 'AI classification'
+    };
+
     let embedFiles = $state();
     let watermarkText = $state('');
     let embedProcessing = $state(false);
-    /** @type {string | null} */
     let resultImageUrl = $state(null);
-    /** @type {{ category: string, label: string | null, confidence: number | null, categoryConfidence: number | null } | null} */
     let classification = $state(null);
     let embedError = $state('');
-    /** @type {{ maxTextBytes: number, minImageWidth: number, minImageHeight: number, imageWidth: number, imageHeight: number, imageOk: boolean, lengthBits: number } | null} */
     let capacity = $state(null);
     let capacityChecking = $state(false);
-    /** @type {string | null} */
     let capacityError = $state(null);
-    /** @type {AbortController | null} */
     let capacityAbort = null;
+    let lastProbedFileSignature = '';
 
-    // --- Detect ---
     let detectFiles = $state();
     let detectProcessing = $state(false);
-    /** @type {{ watermarked: boolean, ownerIdentity: string | null, version: number | null } | null} */
     let detectResult = $state(null);
     let detectError = $state('');
 
-    // --- Extract ---
     let extractFiles = $state();
     let extractProcessing = $state(false);
-    /** @type {{ ownerIdentity: string, text: string } | null} */
     let extractResult = $state(null);
     let extractNotice = $state('');
     let extractError = $state('');
 
-    // --- Visualize ---
     let visualizeFiles = $state();
     let visualizeProcessing = $state(false);
-    /** @type {string | null} */
     let visualizeImageUrl = $state(null);
-    let visualizeNotice = $state('');
     let visualizeError = $state('');
 
-    onMount(() => {
+    const textEncoder = new TextEncoder();
+
+    onMount(async () => {
         token = localStorage.getItem('jwt_token') ?? '';
         if (!token) {
             window.location.href = '/login';
+            return;
         }
+        currentRole = readRole(token);
+        await loadAccount();
     });
 
     function logout() {
@@ -65,25 +82,146 @@
         window.location.href = '/login';
     }
 
-    /** @param {FileList | undefined} files */
-    function validateImage(files) {
-        if (!files || files.length === 0) {
-            return 'Wybierz obraz z dysku.';
+    function readRole(jwt) {
+        try {
+            const parts = jwt.split('.');
+            if (parts.length < 2) return 'USER';
+            const segment = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+            const padded = segment + '='.repeat((4 - segment.length % 4) % 4);
+            const payload = JSON.parse(atob(padded));
+            if (payload.role) return String(payload.role).toUpperCase();
+            if (payload.sub === 'admin' && payload.userId === 1) return 'ADMIN';
+        } catch {
+            return 'USER';
         }
-        if (files[0].size < 100) {
-            return 'Wybrany plik jest zbyt mały lub uszkodzony.';
+        return 'USER';
+    }
+
+    async function loadAccount() {
+        accountLoading = true;
+        accountError = '';
+        try {
+            const [plansResponse, subscriptionResponse, tokensResponse] = await Promise.all([
+                apiGet('/api/subscriptions/plans'),
+                apiGet('/api/subscriptions/me'),
+                apiGet('/api/subscriptions/me/tokens')
+            ]);
+            plans = plansResponse;
+            subscription = subscriptionResponse;
+            tokenBalance = tokensResponse;
+        } catch (error) {
+            accountError = error instanceof Error ? error.message : 'Nie udało się pobrać danych subskrypcji.';
+        } finally {
+            accountLoading = false;
         }
+    }
+
+    async function refreshTokens() {
+        try {
+            tokenBalance = await apiGet('/api/subscriptions/me/tokens');
+        } catch {
+            accountError = 'Nie udało się odświeżyć salda tokenów.';
+        }
+    }
+
+    async function apiGet(url) {
+        const response = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response.status === 401) {
+            logout();
+            throw new Error('Sesja wygasła.');
+        }
+        if (!response.ok) throw new Error(await readError(response));
+        return response.json();
+    }
+
+    function currentPlan() {
+        if (!subscription) return null;
+        return plans.find((plan) => plan.code === subscription.planCode) ?? null;
+    }
+
+    function planAllows(operation) {
+        const plan = currentPlan();
+        return Boolean(plan?.allowedOperations?.includes(operation));
+    }
+
+    function operationCost(operation) {
+        return operationCosts[operation] ?? 0;
+    }
+
+    function availableTokens() {
+        return tokenBalance?.availableTokens ?? 0;
+    }
+
+    function reservedTokens() {
+        return tokenBalance?.reservedTokens ?? 0;
+    }
+
+    function hasTokensFor(operation) {
+        return availableTokens() >= operationCost(operation);
+    }
+
+    function operationName(operation) {
+        return operationLabels[operation] ?? operation;
+    }
+
+    function embedOperation() {
+        if (!capacity?.imageOk || !capacity.lengthBits) return null;
+        return `EMBED_${capacity.lengthBits}`;
+    }
+
+    function embedAiStatus() {
+        const operation = embedOperation();
+        if (!operation || !tokenBalance) return '';
+        const embedCost = operationCost(operation);
+        const aiCost = operationCost('AI_CLASSIFICATION');
+        if (!planAllows('AI_CLASSIFICATION')) return 'AI classification will be skipped by this plan.';
+        if (availableTokens() - embedCost >= aiCost) return `AI classification available: +${aiCost} tokens.`;
+        return 'AI classification will be skipped because the remaining token balance is too low.';
+    }
+
+    function actionStatus(operation) {
+        if (!subscription || !tokenBalance) return 'Ładowanie danych planu.';
+        if (!planAllows(operation)) return `Plan ${subscription.planCode} does not allow ${operationName(operation)}.`;
+        if (!hasTokensFor(operation)) return `Not enough tokens: requires ${operationCost(operation)}, available ${availableTokens()}.`;
         return '';
     }
 
-    // Shared POST helper. Sends the selected image (and optional text) with the JWT.
-    /** @param {string} url @param {File} image @param {string} [text] */
+    function tabOperation(tabId) {
+        if (tabId === 'detect') return 'DETECT';
+        if (tabId === 'extract') return 'EXTRACT';
+        if (tabId === 'visualize') return 'VISUALIZE';
+        return null;
+    }
+
+    function tabStatus(tabId) {
+        const operation = tabOperation(tabId);
+        return operation ? actionStatus(operation) : '';
+    }
+
+    function tabDisabled(tabId) {
+        return Boolean(tabStatus(tabId));
+    }
+
+    function canUseOperation(operation) {
+        return !actionStatus(operation);
+    }
+
+    function selectTab(tabId) {
+        if (!tabDisabled(tabId)) activeTab = tabId;
+    }
+
+    function validateImage(files) {
+        if (!files || files.length === 0) return 'Wybierz obraz z dysku.';
+        if (files[0].size < 100) return 'Wybrany plik jest zbyt mały lub uszkodzony.';
+        return '';
+    }
+
     function postImage(url, image, text) {
         const formData = new FormData();
         formData.append('image', image);
-        if (text !== undefined) {
-            formData.append('text', text);
-        }
+        if (text !== undefined) formData.append('text', text);
         return fetch(url, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
@@ -91,35 +229,30 @@
         });
     }
 
-    /** @param {Response} response */
     async function readError(response) {
         try {
             const data = await response.json();
-            return data.error || data.message || 'Wystąpił błąd podczas przetwarzania.';
+            if (typeof data.detail === 'string') return data.detail;
+            if (data.detail?.message) return data.detail.message;
+            if (data.message) return data.message;
+            if (data.error) return data.error;
+            if (data.code) return data.code;
         } catch {
-            return 'Wystąpił błąd podczas przetwarzania.';
+            // fall through
         }
+        return 'Wystąpił błąd podczas przetwarzania.';
     }
 
-    // Bytes-not-chars: backend measures payload in UTF-8 bytes, so multibyte
-    // characters (ą, ł, emoji) eat more capacity than ASCII. Mirror that here.
-    const textEncoder = new TextEncoder();
-    /** @param {string} text */
     function utf8ByteLength(text) {
         return textEncoder.encode(text).length;
     }
 
-    let lastProbedFileSignature = '';
-
-    /** @param {File} file */
     function fileSignature(file) {
         return `${file.name}|${file.size}|${file.lastModified}`;
     }
 
     async function probeCapacity() {
         if (!embedFiles || embedFiles.length === 0) return;
-        // Cancel any in-flight probe so an earlier file's response can't overwrite
-        // state for a newer selection.
         capacityAbort?.abort();
         const controller = new AbortController();
         capacityAbort = controller;
@@ -141,8 +274,8 @@
             } else {
                 capacityError = await readError(response);
             }
-        } catch (err) {
-            if (err instanceof DOMException && err.name === 'AbortError') return;
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') return;
             capacityError = 'Nie udało się sprawdzić pojemności obrazu.';
         } finally {
             if (capacityAbort === controller) {
@@ -153,8 +286,6 @@
     }
 
     $effect(() => {
-        // Refetch capacity only when the user actually picked a new file —
-        // re-binding the same FileList shouldn't trigger another upload.
         if (embedFiles && embedFiles.length > 0) {
             const sig = fileSignature(embedFiles[0]);
             if (sig !== lastProbedFileSignature) {
@@ -168,25 +299,24 @@
         }
     });
 
+    $effect(() => {
+        if (tabDisabled(activeTab)) activeTab = 'embed';
+    });
+
     async function embedWatermark() {
         const validation = validateImage(embedFiles);
         if (validation) { embedError = validation; return; }
-        if (!watermarkText || watermarkText.trim() === '') {
-            embedError = 'Wpisz tekst, który chcesz ukryć w obrazie.';
+        if (!watermarkText.trim()) { embedError = 'Wpisz tekst do ukrycia.'; return; }
+        if (capacityChecking) { embedError = 'Poczekaj na sprawdzenie pojemności obrazu.'; return; }
+        if (!capacity?.imageOk) { embedError = 'Obraz nie spełnia minimalnych wymagań watermarkingu.'; return; }
+        if (utf8ByteLength(watermarkText) > capacity.maxTextBytes) {
+            embedError = `Tekst jest za długi. Limit dla tego obrazu to ${capacity.maxTextBytes} bajtów.`;
             return;
         }
-        if (capacityChecking) {
-            embedError = 'Poczekaj na sprawdzenie pojemności obrazu.';
-            return;
-        }
-        if (capacity && !capacity.imageOk) {
-            embedError = `Obraz jest za mały (${capacity.imageWidth}×${capacity.imageHeight}). Minimum to ${capacity.minImageWidth}×${capacity.minImageHeight} px.`;
-            return;
-        }
-        if (capacity && utf8ByteLength(watermarkText) > capacity.maxTextBytes) {
-            embedError = `Tekst jest za długi — maksymalnie ${capacity.maxTextBytes} bajtów dla tego obrazu.`;
-            return;
-        }
+        const operation = embedOperation();
+        if (!operation) { embedError = 'Nie udało się ustalić typu operacji.'; return; }
+        const status = actionStatus(operation);
+        if (status) { embedError = status; return; }
 
         embedError = '';
         embedProcessing = true;
@@ -198,8 +328,10 @@
             if (response.ok) {
                 classification = readClassification(response.headers);
                 resultImageUrl = URL.createObjectURL(await response.blob());
+                await refreshTokens();
             } else {
                 embedError = await readError(response);
+                await refreshTokens();
             }
         } catch {
             embedError = 'Błąd połączenia z serwerem.';
@@ -211,11 +343,12 @@
     async function detectWatermark() {
         const validation = validateImage(detectFiles);
         if (validation) { detectError = validation; return; }
+        const status = actionStatus('DETECT');
+        if (status) { detectError = status; return; }
 
         detectError = '';
         detectProcessing = true;
         detectResult = null;
-
         try {
             const response = await postImage('/api/watermark/detect', detectFiles[0]);
             if (response.ok) {
@@ -223,6 +356,7 @@
             } else {
                 detectError = await readError(response);
             }
+            await refreshTokens();
         } catch {
             detectError = 'Błąd połączenia z serwerem.';
         } finally {
@@ -230,38 +364,30 @@
         }
     }
 
-    // Extract checks for a watermark first, mirroring the visualize flow: an image
-    // with nothing hidden gets a friendly notice instead of a raw backend error.
     async function extractWatermark() {
         const validation = validateImage(extractFiles);
         if (validation) { extractError = validation; return; }
+        const status = actionStatus('EXTRACT');
+        if (status) { extractError = status; return; }
 
         extractError = '';
         extractNotice = '';
         extractProcessing = true;
         extractResult = null;
-
         try {
-            const detectResponse = await postImage('/api/watermark/detect', extractFiles[0]);
-            if (!detectResponse.ok) {
-                extractError = await readError(detectResponse);
-                return;
-            }
-
-            const detection = await detectResponse.json();
-            if (!detection.watermarked) {
-                extractNotice = 'Ten obraz nie zawiera ukrytego znaku wodnego – nie ma czego odczytać.';
-                return;
-            }
-
             const response = await postImage('/api/watermark/extract', extractFiles[0]);
             if (response.ok) {
                 extractResult = await response.json();
+            } else if (response.status === 400) {
+                extractNotice = await readError(response);
             } else if (response.status === 403) {
-                extractError = 'Nie jesteś właścicielem tego znaku wodnego – nie możesz odczytać ukrytej treści.';
+                extractError = currentRole === 'ADMIN'
+                    ? 'Admin should be allowed to read this watermark. Log in again to refresh the role claim.'
+                    : 'Nie jesteś właścicielem tego znaku wodnego.';
             } else {
                 extractError = await readError(response);
             }
+            await refreshTokens();
         } catch {
             extractError = 'Błąd połączenia z serwerem.';
         } finally {
@@ -269,36 +395,23 @@
         }
     }
 
-    // Visualize runs detect first: there is nothing to highlight in an image that
-    // carries no watermark, so we short-circuit with a friendly notice instead.
     async function visualizeWatermark() {
         const validation = validateImage(visualizeFiles);
         if (validation) { visualizeError = validation; return; }
+        const status = actionStatus('VISUALIZE');
+        if (status) { visualizeError = status; return; }
 
         visualizeError = '';
-        visualizeNotice = '';
         visualizeProcessing = true;
         visualizeImageUrl = null;
-
         try {
-            const detectResponse = await postImage('/api/watermark/detect', visualizeFiles[0]);
-            if (!detectResponse.ok) {
-                visualizeError = await readError(detectResponse);
-                return;
-            }
-
-            const detection = await detectResponse.json();
-            if (!detection.watermarked) {
-                visualizeNotice = 'Ten obraz nie zawiera ukrytego znaku wodnego – nie ma czego wizualizować.';
-                return;
-            }
-
             const response = await postImage('/api/watermark/visualize', visualizeFiles[0]);
             if (response.ok) {
                 visualizeImageUrl = URL.createObjectURL(await response.blob());
             } else {
                 visualizeError = await readError(response);
             }
+            await refreshTokens();
         } catch {
             visualizeError = 'Błąd połączenia z serwerem.';
         } finally {
@@ -306,21 +419,14 @@
         }
     }
 
-    // Reads the image classification that ai-service produced during embedding.
-    // The backend exposes it via response headers; returns null when unavailable.
-    /** @param {Headers} headers */
     function readClassification(headers) {
         const category = headers.get('X-Image-Category');
         const label = headers.get('X-Image-Label');
         const confidence = headers.get('X-Image-Confidence');
         const categoryConfidence = headers.get('X-Image-Category-Confidence');
 
-        if (!category || category === 'unknown') {
-            return null;
-        }
-
-        const toPercent = (v) => (v ? Math.round(parseFloat(v) * 100) : null);
-
+        if (!category || category === 'unknown') return null;
+        const toPercent = (value) => (value ? Math.round(parseFloat(value) * 100) : null);
         return {
             category,
             label: label && label !== 'unknown' ? label : null,
@@ -331,17 +437,50 @@
 </script>
 
 <main class="container">
-    <header class="header">
-        <h2>🔒 Znakowanie Obrazów</h2>
-        <button class="btn btn-outline" onclick={logout}>Wyloguj</button>
+    <header class="topbar">
+        <div>
+            <h1>Watermark Console</h1>
+            <p>PNG watermarking with subscription-aware token limits.</p>
+        </div>
+        <button class="btn btn-outline compact" onclick={logout}>Logout</button>
     </header>
+
+    <section class="account-panel">
+        {#if accountLoading}
+            <div class="metric">Loading subscription data...</div>
+        {:else if accountError}
+            <div class="alert alert-error">{accountError}</div>
+        {:else}
+            <div class="metric">
+                <span>Plan</span>
+                <strong>{subscription?.planCode ?? 'UNKNOWN'}</strong>
+            </div>
+            <div class="metric">
+                <span>Available tokens</span>
+                <strong>{availableTokens()}</strong>
+            </div>
+            <div class="metric">
+                <span>Reserved tokens</span>
+                <strong>{reservedTokens()}</strong>
+            </div>
+            <div class="metric">
+                <span>Role</span>
+                <strong>{currentRole}</strong>
+            </div>
+            <button class="btn btn-outline compact" onclick={loadAccount}>Refresh</button>
+        {/if}
+    </section>
 
     <nav class="tabs">
         {#each tabs as tab}
+            {@const disabled = tabDisabled(tab.id)}
             <button
                 class="tab"
                 class:active={activeTab === tab.id}
-                onclick={() => (activeTab = tab.id)}
+                class:disabled={disabled}
+                onclick={() => selectTab(tab.id)}
+                disabled={disabled}
+                title={disabled ? tabStatus(tab.id) : tab.label}
             >
                 {tab.label}
             </button>
@@ -349,517 +488,499 @@
     </nav>
 
     {#if activeTab === 'embed'}
-        <div class="card">
-            <h3>Osadź znak wodny</h3>
-            <p class="subtitle">Wybierz obraz PNG i wpisz tajną wiadomość, która zostanie w nim niewidocznie ukryta.</p>
-
-            <p class="hint">Plik wynikowy zostaje PNG-iem — kompresja JPG, screenshot lub edycja usuwa znak wodny.</p>
-
-            <div class="form-group">
-                <label for="embed-file">Obraz bazowy (PNG):</label>
-                <input id="embed-file" type="file" accept="image/png" bind:files={embedFiles} class="input-file" />
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>Embed watermark</h2>
+                <span class="cost">{embedOperation() ? `${operationName(embedOperation())}: ${operationCost(embedOperation())} tokens` : 'Capacity check is free'}</span>
             </div>
+
+            <label class="field">
+                <span>Base image</span>
+                <input type="file" accept="image/png" bind:files={embedFiles} />
+            </label>
 
             {#if capacityChecking}
-                <div class="capacity-info capacity-info--pending">⏳ Sprawdzanie pojemności obrazu…</div>
+                <div class="notice">Checking image capacity...</div>
             {:else if capacityError}
-                <div class="capacity-info capacity-info--error">⚠️ {capacityError}</div>
+                <div class="alert alert-error">{capacityError}</div>
             {:else if capacity && !capacity.imageOk}
-                <div class="capacity-info capacity-info--error">
-                    ⚠️ Obraz jest za mały: <strong>{capacity.imageWidth}×{capacity.imageHeight} px</strong>.
-                    Minimum to <strong>{capacity.minImageWidth}×{capacity.minImageHeight} px</strong>.
+                <div class="alert alert-error">
+                    Image is too small: {capacity.imageWidth}x{capacity.imageHeight}. Minimum is {capacity.minImageWidth}x{capacity.minImageHeight}.
                 </div>
             {:else if capacity}
-                <div class="capacity-info" role="status" aria-live="polite">
-                    📐 <strong>{capacity.imageWidth}×{capacity.imageHeight} px</strong> — możesz ukryć maksymalnie
-                    <strong>{capacity.maxTextBytes} bajtów</strong> (znaki ASCII = 1 bajt, polskie znaki = 2 bajty).
+                <div class="capacity-grid">
+                    <div><span>Size</span><strong>{capacity.imageWidth}x{capacity.imageHeight}</strong></div>
+                    <div><span>Tier</span><strong>{embedOperation()}</strong></div>
+                    <div><span>Text limit</span><strong>{capacity.maxTextBytes} B</strong></div>
+                    <div><span>Plan check</span><strong>{actionStatus(embedOperation()) || 'Allowed'}</strong></div>
                 </div>
+                {#if embedAiStatus()}
+                    <div class="notice">{embedAiStatus()}</div>
+                {/if}
             {/if}
 
-            <div class="form-group">
-                <label for="watermark-text">
-                    Ukryty tekst:
-                    {#if capacity && capacity.imageOk}
-                        <span class="char-counter" class:char-counter--over={utf8ByteLength(watermarkText) > capacity.maxTextBytes}>
+            <label class="field">
+                <span>
+                    Hidden text
+                    {#if capacity?.imageOk}
+                        <small class:over={utf8ByteLength(watermarkText) > capacity.maxTextBytes}>
                             {utf8ByteLength(watermarkText)} / {capacity.maxTextBytes} B
-                        </span>
+                        </small>
                     {/if}
-                </label>
-                <input id="watermark-text" type="text" bind:value={watermarkText} placeholder="Np. Prawa autorskie - Jan Kowalski" class="input-text" />
-            </div>
+                </span>
+                <input type="text" bind:value={watermarkText} placeholder="Text to hide in the image" />
+            </label>
 
-            <button class="btn btn-primary" onclick={embedWatermark} disabled={embedProcessing || capacityChecking || (capacity !== null && !capacity.imageOk)}>
-                {embedProcessing ? '⏳ Przetwarzanie...' : '✨ Generuj obraz'}
+            <button
+                class="btn btn-primary"
+                onclick={embedWatermark}
+                disabled={embedProcessing || capacityChecking || (capacity !== null && !capacity.imageOk)}
+            >
+                {embedProcessing ? 'Processing...' : 'Generate watermarked PNG'}
             </button>
 
             {#if embedError}
-                <div class="alert alert-error"><strong>Błąd:</strong> {embedError}</div>
+                <div class="alert alert-error">{embedError}</div>
             {/if}
-        </div>
+        </section>
 
         {#if resultImageUrl}
-            <div class="card result-card">
-                <h3>Oto twój zabezpieczony obraz:</h3>
-
+            <section class="panel result-panel">
+                <h2>Watermarked image</h2>
                 {#if classification}
-                    <div class="classification">
-                        <span class="classification-label">Wykryta klasa:</span>
-                        <span class="classification-category">{classification.category}</span>
-                        {#if classification.categoryConfidence !== null && classification.categoryConfidence > 0}
-                            <span class="classification-confidence">{classification.categoryConfidence}%</span>
+                    <div class="notice">
+                        AI classification: <strong>{classification.category}</strong>
+                        {#if classification.categoryConfidence !== null}
+                            ({classification.categoryConfidence}%)
                         {/if}
                         {#if classification.label}
-                            <span class="classification-detail">
-                                · {classification.label}{classification.confidence !== null ? ` (${classification.confidence}%)` : ''}
-                            </span>
-                        {/if}
-                    </div>
-                {/if}
-
-                <div class="image-wrapper">
-                    <img src={resultImageUrl} alt="Obraz ze znakiem wodnym" />
-                </div>
-                <a href={resultImageUrl} download="watermarked_image.png" class="download-link">
-                    <button class="btn btn-success">⬇️ Pobierz obraz (PNG)</button>
-                </a>
-                <p class="hint hint--result">Trzymaj jako PNG — rekompresja niszczy znak.</p>
-            </div>
-        {/if}
-    {:else if activeTab === 'detect'}
-        <div class="card">
-            <h3>Wykryj znak wodny</h3>
-            <p class="subtitle">Sprawdź, czy obraz zawiera znak wodny osadzony przez ten serwis. Działa tylko na nieprzetworzonym PNG-u.</p>
-
-            <div class="form-group">
-                <label for="detect-file">Obraz do sprawdzenia (PNG/JPG):</label>
-                <input id="detect-file" type="file" accept="image/png, image/jpeg" bind:files={detectFiles} class="input-file" />
-            </div>
-
-            <button class="btn btn-primary" onclick={detectWatermark} disabled={detectProcessing}>
-                {detectProcessing ? '⏳ Sprawdzanie...' : '🔍 Sprawdź'}
-            </button>
-
-            {#if detectError}
-                <div class="alert alert-error"><strong>Błąd:</strong> {detectError}</div>
-            {/if}
-        </div>
-
-        {#if detectResult}
-            <div class="card result-card">
-                {#if detectResult.watermarked}
-                    <div class="status-badge status-yes">✅ Wykryto znak wodny</div>
-                    <div class="meta">
-                        {#if detectResult.ownerIdentity}
-                            <div><span class="meta-key">Właściciel:</span> {detectResult.ownerIdentity}</div>
-                        {/if}
-                        {#if detectResult.version !== null}
-                            <div><span class="meta-key">Wersja formatu:</span> {detectResult.version}</div>
+                            - {classification.label}
                         {/if}
                     </div>
                 {:else}
-                    <div class="status-badge status-no">❌ Brak znaku wodnego</div>
-                    <p class="subtitle">Ten obraz nie zawiera znaku osadzonego przez ten serwis.</p>
+                    <div class="notice">AI classification was skipped or unavailable.</div>
                 {/if}
+                <div class="image-frame">
+                    <img src={resultImageUrl} alt="Watermarked output" />
+                </div>
+                <a href={resultImageUrl} download="watermarked_image.png" class="download-link">
+                    <button class="btn btn-success">Download PNG</button>
+                </a>
+            </section>
+        {/if}
+    {:else if activeTab === 'detect'}
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>Detect watermark</h2>
+                <span class="cost">DETECT: {operationCost('DETECT')} token</span>
             </div>
+            {@render OperationGate('DETECT')}
+            <label class="field">
+                <span>Image</span>
+                <input type="file" accept="image/png,image/jpeg" bind:files={detectFiles} disabled={!canUseOperation('DETECT')} />
+            </label>
+            <button class="btn btn-primary" onclick={detectWatermark} disabled={detectProcessing || !canUseOperation('DETECT')}>
+                {detectProcessing ? 'Checking...' : 'Detect'}
+            </button>
+            {#if detectError}<div class="alert alert-error">{detectError}</div>{/if}
+        </section>
+
+        {#if detectResult}
+            <section class="panel result-panel">
+                {#if detectResult.watermarked}
+                    <div class="status yes">Watermark detected</div>
+                    <div class="details">
+                        <div><span>Owner</span><strong>{detectResult.ownerIdentity}</strong></div>
+                        <div><span>Payload tier</span><strong>{detectResult.lengthBits ?? 'unknown'}</strong></div>
+                    </div>
+                {:else}
+                    <div class="status no">No watermark detected</div>
+                {/if}
+            </section>
         {/if}
     {:else if activeTab === 'extract'}
-        <div class="card">
-            <h3>Wyodrębnij ukryty tekst</h3>
-            <p class="subtitle">Odczytaj treść ukrytą w obrazie. Dostęp ma tylko właściciel znaku wodnego. Działa tylko na nieprzetworzonym PNG-u.</p>
-
-            <div class="form-group">
-                <label for="extract-file">Obraz ze znakiem (PNG/JPG):</label>
-                <input id="extract-file" type="file" accept="image/png, image/jpeg" bind:files={extractFiles} class="input-file" />
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>Extract hidden text</h2>
+                <span class="cost">EXTRACT: {operationCost('EXTRACT')} tokens</span>
             </div>
-
-            <button class="btn btn-primary" onclick={extractWatermark} disabled={extractProcessing}>
-                {extractProcessing ? '⏳ Odczytywanie...' : '📖 Wyodrębnij tekst'}
+            {@render OperationGate('EXTRACT')}
+            <label class="field">
+                <span>Watermarked image</span>
+                <input type="file" accept="image/png,image/jpeg" bind:files={extractFiles} disabled={!canUseOperation('EXTRACT')} />
+            </label>
+            <button class="btn btn-primary" onclick={extractWatermark} disabled={extractProcessing || !canUseOperation('EXTRACT')}>
+                {extractProcessing ? 'Reading...' : 'Extract'}
             </button>
-
-            {#if extractNotice}
-                <div class="alert alert-info">{extractNotice}</div>
-            {/if}
-            {#if extractError}
-                <div class="alert alert-error"><strong>Błąd:</strong> {extractError}</div>
-            {/if}
-        </div>
+            {#if extractNotice}<div class="alert alert-info">{extractNotice}</div>{/if}
+            {#if extractError}<div class="alert alert-error">{extractError}</div>{/if}
+        </section>
 
         {#if extractResult}
-            <div class="card result-card">
-                <h3>Ukryta treść:</h3>
-                <div class="meta">
-                    <div><span class="meta-key">Właściciel:</span> {extractResult.ownerIdentity}</div>
+            <section class="panel result-panel">
+                <h2>Hidden text</h2>
+                <div class="details">
+                    <div><span>Owner</span><strong>{extractResult.ownerIdentity}</strong></div>
                 </div>
-                <div class="extracted-text">{extractResult.text}</div>
-            </div>
+                <pre>{extractResult.text}</pre>
+            </section>
         {/if}
     {:else if activeTab === 'visualize'}
-        <div class="card">
-            <h3>Wizualizuj znak wodny</h3>
-            <p class="subtitle">Mapa cieplna pokazuje, gdzie w obrazie zostały zapisane dane. Działa tylko na nieprzetworzonym PNG-u.</p>
-
-            <div class="form-group">
-                <label for="visualize-file">Obraz do wizualizacji (PNG/JPG):</label>
-                <input id="visualize-file" type="file" accept="image/png, image/jpeg" bind:files={visualizeFiles} class="input-file" />
+        <section class="panel">
+            <div class="panel-heading">
+                <h2>Visualize watermark footprint</h2>
+                <span class="cost">VISUALIZE: {operationCost('VISUALIZE')} tokens</span>
             </div>
-
-            <button class="btn btn-primary" onclick={visualizeWatermark} disabled={visualizeProcessing}>
-                {visualizeProcessing ? '⏳ Przetwarzanie...' : '🗺️ Wizualizuj'}
+            {@render OperationGate('VISUALIZE')}
+            <label class="field">
+                <span>Image</span>
+                <input type="file" accept="image/png,image/jpeg" bind:files={visualizeFiles} disabled={!canUseOperation('VISUALIZE')} />
+            </label>
+            <button class="btn btn-primary" onclick={visualizeWatermark} disabled={visualizeProcessing || !canUseOperation('VISUALIZE')}>
+                {visualizeProcessing ? 'Rendering...' : 'Visualize'}
             </button>
-
-            {#if visualizeNotice}
-                <div class="alert alert-info">{visualizeNotice}</div>
-            {/if}
-            {#if visualizeError}
-                <div class="alert alert-error"><strong>Błąd:</strong> {visualizeError}</div>
-            {/if}
-        </div>
+            {#if visualizeError}<div class="alert alert-error">{visualizeError}</div>{/if}
+        </section>
 
         {#if visualizeImageUrl}
-            <div class="card result-card">
-                <h3>Lokalizacja danych znaku wodnego:</h3>
-                <div class="image-wrapper">
-                    <img src={visualizeImageUrl} alt="Wizualizacja bloków znaku wodnego" />
+            <section class="panel result-panel">
+                <h2>Visualization</h2>
+                <div class="image-frame">
+                    <img src={visualizeImageUrl} alt="Watermark visualization" />
                 </div>
                 <a href={visualizeImageUrl} download="watermark_visualization.png" class="download-link">
-                    <button class="btn btn-success">⬇️ Pobierz wizualizację</button>
+                    <button class="btn btn-success">Download visualization</button>
                 </a>
-            </div>
+            </section>
         {/if}
     {/if}
 </main>
 
+{#snippet OperationGate(operation)}
+    {@const status = actionStatus(operation)}
+    {#if status}
+        <div class="alert alert-warning">{status}</div>
+    {:else}
+        <div class="notice">{operationName(operation)} is available for your plan.</div>
+    {/if}
+{/snippet}
+
 <style>
     :global(body) {
         margin: 0;
-        padding: 0;
-        background-color: #f4f7f6;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        color: #333;
+        background: #f3f5f7;
+        color: #1f2933;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
     .container {
-        max-width: 650px;
-        margin: 40px auto;
-        padding: 0 20px;
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 32px 20px 48px;
     }
 
-    .header {
+    .topbar {
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        margin-bottom: 30px;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 20px;
     }
 
-    .header h2 {
+    h1, h2 {
         margin: 0;
-        color: #2c3e50;
+        color: #172033;
+    }
+
+    h1 {
+        font-size: 1.8rem;
+    }
+
+    h2 {
+        font-size: 1.25rem;
+    }
+
+    p {
+        margin: 6px 0 0;
+        color: #667085;
+    }
+
+    .account-panel {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
+        gap: 10px;
+        align-items: stretch;
+        margin-bottom: 18px;
+    }
+
+    .metric, .panel, .tab {
+        background: #fff;
+        border: 1px solid #d9e2ec;
+        border-radius: 8px;
+    }
+
+    .metric {
+        padding: 12px 14px;
+    }
+
+    .metric span, .details span, .capacity-grid span {
+        display: block;
+        color: #667085;
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .metric strong {
+        display: block;
+        margin-top: 4px;
+        font-size: 1.2rem;
     }
 
     .tabs {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
         gap: 8px;
-        margin-bottom: 30px;
-        flex-wrap: wrap;
+        margin-bottom: 18px;
     }
 
     .tab {
-        flex: 1 1 auto;
-        padding: 10px 14px;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        background-color: #ffffff;
-        color: #4a5568;
-        font-size: 0.95rem;
-        font-weight: 600;
+        padding: 12px 10px;
+        color: #344054;
+        font-weight: 700;
         cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .tab:hover:not(.active) {
-        background-color: #edf2f7;
     }
 
     .tab.active {
-        background-color: #3182ce;
-        border-color: #3182ce;
-        color: #ffffff;
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #fff;
     }
 
-    .card {
-        background: #ffffff;
-        border-radius: 12px;
-        padding: 30px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
-        margin-bottom: 30px;
+    .tab:disabled {
+        background: #eef2f6;
+        color: #98a2b3;
+        cursor: not-allowed;
     }
 
-    .card h3 {
-        margin-top: 0;
-        margin-bottom: 10px;
-        font-size: 1.5rem;
-        color: #1a202c;
+    .tab.active:disabled {
+        background: #98a2b3;
+        border-color: #98a2b3;
+        color: #fff;
     }
 
-    .subtitle {
-        color: #718096;
-        font-size: 0.95rem;
-        margin-bottom: 25px;
+    .panel {
+        padding: 22px;
+        margin-bottom: 18px;
     }
 
-    .form-group {
-        margin-bottom: 20px;
+    .panel-heading {
         display: flex;
-        flex-direction: column;
-    }
-
-    .form-group label {
-        font-weight: 600;
-        margin-bottom: 8px;
-        font-size: 0.9rem;
-        color: #4a5568;
-        display: flex;
+        justify-content: space-between;
         align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .cost {
+        color: #155e75;
+        background: #ecfeff;
+        border: 1px solid #a5f3fc;
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 0.84rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .field {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 16px;
+        font-weight: 700;
+    }
+
+    .field span {
+        display: flex;
         justify-content: space-between;
         gap: 12px;
     }
 
-    .capacity-info {
-        background-color: #ebf8ff;
-        border: 1px solid #bee3f8;
-        color: #2c5282;
-        padding: 10px 14px;
+    input[type="text"], input[type="file"] {
+        border: 1px solid #cbd5e1;
         border-radius: 8px;
-        font-size: 0.9rem;
-        margin-bottom: 20px;
-    }
-
-    .capacity-info--pending {
-        background-color: #f7fafc;
-        border-color: #e2e8f0;
-        color: #718096;
-    }
-
-    .capacity-info--error {
-        background-color: #fff5f5;
-        border-color: #feb2b2;
-        color: #9b2c2c;
-    }
-
-    .char-counter {
-        font-size: 0.8rem;
-        font-weight: 500;
-        color: #718096;
-        font-variant-numeric: tabular-nums;
-    }
-
-    .char-counter--over {
-        color: #c53030;
-        font-weight: 700;
-    }
-
-    .input-text, .input-file {
-        padding: 12px 16px;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
+        background: #f8fafc;
+        padding: 12px 14px;
         font-size: 1rem;
-        transition: border-color 0.2s;
-        background-color: #f8fafc;
     }
 
-    .input-text:focus {
+    input[type="text"]:focus {
         outline: none;
-        border-color: #3182ce;
-        background-color: #ffffff;
+        border-color: #2563eb;
+        background: #fff;
     }
 
-    .btn {
-        padding: 12px 20px;
-        border: none;
-        border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-    }
-
-    .btn-primary {
-        background-color: #3182ce;
-        color: white;
-        margin-top: 10px;
-    }
-
-    .btn-primary:hover:not(:disabled) {
-        background-color: #2b6cb0;
-        transform: translateY(-1px);
-    }
-
-    .btn-success {
-        background-color: #38a169;
-        color: white;
-    }
-
-    .btn-success:hover {
-        background-color: #2f855a;
-        transform: translateY(-1px);
-    }
-
-    .btn-outline {
-        background-color: transparent;
-        border: 2px solid #e2e8f0;
-        color: #4a5568;
-        width: auto;
-        padding: 8px 16px;
-    }
-
-    .btn-outline:hover {
-        background-color: #edf2f7;
-    }
-
-    .btn:disabled {
-        background-color: #a0aec0;
+    input:disabled {
+        background: #eef2f6;
+        color: #98a2b3;
         cursor: not-allowed;
     }
 
-    .alert {
-        margin-top: 20px;
-        padding: 12px 16px;
+    .btn {
+        border: 0;
         border-radius: 8px;
-        font-size: 0.95rem;
+        padding: 11px 16px;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .btn-primary, .btn-success {
+        width: 100%;
+        color: #fff;
+    }
+
+    .btn-primary {
+        background: #2563eb;
+    }
+
+    .btn-success {
+        background: #16803c;
+    }
+
+    .btn-outline {
+        background: #fff;
+        color: #344054;
+        border: 1px solid #cbd5e1;
+    }
+
+    .compact {
+        width: auto;
+        align-self: center;
+    }
+
+    .btn:disabled {
+        background: #98a2b3;
+        cursor: not-allowed;
+    }
+
+    .alert, .notice {
+        border-radius: 8px;
+        padding: 11px 13px;
+        margin: 12px 0;
+        font-size: 0.93rem;
+    }
+
+    .notice {
+        background: #f8fafc;
+        border: 1px solid #d9e2ec;
+        color: #475467;
     }
 
     .alert-error {
-        background-color: #fff5f5;
-        color: #c53030;
-        border-left: 4px solid #f56565;
+        background: #fff1f2;
+        border: 1px solid #fecdd3;
+        color: #be123c;
+    }
+
+    .alert-warning {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        color: #92400e;
     }
 
     .alert-info {
-        background-color: #ebf8ff;
-        color: #2b6cb0;
-        border-left: 4px solid #4299e1;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
     }
 
-    .hint {
-        margin: -8px 0 16px;
-        font-size: 0.8rem;
-        color: #64748b; /* slate-500, ~5.7:1 on white — meets WCAG AA */
-        line-height: 1.45;
+    .capacity-grid, .details {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-bottom: 12px;
     }
 
-    .hint--result {
-        margin: 14px 0 0;
-        text-align: center;
-    }
-
-    .result-card {
-        text-align: center;
-    }
-
-    .classification {
-        display: inline-flex;
-        align-items: center;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 8px;
-        margin: 8px auto 4px;
-        padding: 10px 16px;
-        background-color: #ebf8ff;
-        border: 1px solid #bee3f8;
-        border-radius: 8px;
-        font-size: 0.95rem;
-    }
-
-    .classification-label {
-        color: #4a5568;
-        font-weight: 600;
-    }
-
-    .classification-category {
-        color: #2b6cb0;
-        font-weight: 700;
-        text-transform: capitalize;
-    }
-
-    .classification-detail {
-        color: #718096;
-    }
-
-    .classification-confidence {
-        color: #2f855a;
-        font-weight: 600;
-        background-color: #f0fff4;
-        border-radius: 999px;
-        padding: 2px 10px;
-    }
-
-    .status-badge {
-        display: inline-block;
-        padding: 10px 20px;
-        border-radius: 999px;
-        font-weight: 700;
-        font-size: 1.05rem;
-        margin-bottom: 8px;
-    }
-
-    .status-yes {
-        background-color: #f0fff4;
-        color: #2f855a;
-        border: 1px solid #9ae6b4;
-    }
-
-    .status-no {
-        background-color: #fff5f5;
-        color: #c53030;
-        border: 1px solid #feb2b2;
-    }
-
-    .meta {
-        color: #4a5568;
-        font-size: 0.95rem;
-        margin: 8px 0;
-        line-height: 1.6;
-    }
-
-    .meta-key {
-        font-weight: 600;
-        color: #718096;
-    }
-
-    .extracted-text {
-        margin-top: 16px;
-        padding: 16px;
-        background-color: #f8fafc;
+    .capacity-grid div, .details div {
+        background: #f8fafc;
         border: 1px solid #e2e8f0;
         border-radius: 8px;
-        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-        color: #1a202c;
-        text-align: left;
-        white-space: pre-wrap;
-        word-break: break-word;
-    }
-
-    .image-wrapper {
-        margin: 20px 0;
-        border-radius: 8px;
-        overflow: hidden;
-        border: 2px dashed #e2e8f0;
         padding: 10px;
     }
 
-    .image-wrapper img {
+    small {
+        color: #667085;
+        font-weight: 700;
+    }
+
+    small.over {
+        color: #be123c;
+    }
+
+    .result-panel {
+        text-align: center;
+    }
+
+    .image-frame {
+        margin: 16px 0;
+        border: 1px dashed #cbd5e1;
+        border-radius: 8px;
+        padding: 10px;
+        background: #f8fafc;
+    }
+
+    .image-frame img {
+        display: block;
         max-width: 100%;
         height: auto;
-        display: block;
-        border-radius: 4px;
         margin: 0 auto;
+        border-radius: 4px;
     }
 
     .download-link {
         text-decoration: none;
+    }
+
+    .status {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 9px 16px;
+        font-weight: 800;
+        margin-bottom: 12px;
+    }
+
+    .status.yes {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .status.no {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    pre {
+        text-align: left;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+    }
+
+    @media (max-width: 760px) {
+        .topbar, .panel-heading {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .account-panel, .tabs, .capacity-grid, .details {
+            grid-template-columns: 1fr;
+        }
+
+        .compact {
+            width: 100%;
+        }
     }
 </style>

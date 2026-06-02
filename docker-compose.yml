@@ -169,6 +169,8 @@ services:
         condition: service_started
       watermark-service:
         condition: service_started
+      subscription-service:
+        condition: service_started
     restart: unless-stopped
 
   sonarqube-db:
