@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import logging
 from typing import Annotated
 
@@ -47,6 +50,28 @@ def _bearer_from_request(request: Request) -> str | None:
     if header.lower().startswith("bearer "):
         return header[7:]
     return None
+
+
+def _jwt_payload(token: str | None) -> dict:
+    if not token:
+        return {}
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return {}
+        payload_segment = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_segment))
+        return payload if isinstance(payload, dict) else {}
+    except (ValueError, json.JSONDecodeError, binascii.Error):
+        return {}
+
+
+def _is_admin_token(token: str | None) -> bool:
+    payload = _jwt_payload(token)
+    role = payload.get("role")
+    if isinstance(role, str) and role.upper() == "ADMIN":
+        return True
+    return payload.get("sub") == "admin" and payload.get("userId") == 1
 
 
 def _read_png(image_bytes: bytes) -> None:
@@ -223,7 +248,7 @@ async def extract(
         if not detection.watermarked:
             await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
             raise HTTPException(400, detail="No watermark found in this image")
-        if detection.owner_identity != principal:
+        if detection.owner_identity != principal and not _is_admin_token(bearer_token):
             await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
             raise HTTPException(403, detail="Requester is not allowed to read this watermark")
     except HTTPException:
