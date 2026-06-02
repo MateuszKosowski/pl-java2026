@@ -108,12 +108,17 @@ services:
       EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
       EUREKA_USER: ${EUREKA_USER}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
     ports:
       - "8085:8085"
     depends_on:
       config-server:
         condition: service_healthy
       eureka-server:
+        condition: service_started
+      postgres-db:
         condition: service_started
     restart: unless-stopped
 
