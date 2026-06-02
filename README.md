@@ -1,24 +1,24 @@
 ## Członkowie grupy 
 251558, 251554, 251598, 251620, 251606, 247774
 
-## Architektura
+## Architecture
 
-System jest polyglotem. **Watermark Service to obecnie serwis w Pythonie (FastAPI)** —
-zastąpił dawny moduł Java `watermark-service`, który został usunięty. W Eurece nadal
-rejestruje się pod logiczną nazwą `WATERMARK-SERVICE`, więc dla klientów (GUI, Feign)
-nic się nie zmienia.
+The system is polyglot. **The Watermark Service is now a Python (FastAPI) service** —
+it replaced the old Java `watermark-service` module, which has been removed. It still
+registers in Eureka under the logical name `WATERMARK-SERVICE`, so nothing changes for
+clients (GUI, Feign).
 
-| Moduł | Technologia | Odpowiedzialność |
+| Module | Technology | Responsibility |
 |---|---|---|
-| `auth-server` | Java / Spring Boot | uwierzytelnianie i wydawanie JWT |
-| `config-server` | Java / Spring Cloud Config | centralna konfiguracja |
+| `auth-server` | Java / Spring Boot | authentication and JWT issuing |
+| `config-server` | Java / Spring Cloud Config | centralized configuration |
 | `eureka-server` | Java / Spring Cloud | service discovery |
-| `ai-service` | Java / Spring Boot | klasyfikacja obrazów (AI) |
-| `watermark-service-py` | **Python / FastAPI** | steganografia PNG + szyfrowane (AES-GCM) znakowanie wodne |
-| `gui` | React / nginx | interfejs użytkownika |
+| `ai-service` | Java / Spring Boot | image classification (AI) |
+| `watermark-service-py` | **Python / FastAPI** | PNG steganography + encrypted (AES-GCM) watermark processing |
+| `gui` | React / nginx | user interface |
 
-Krótko: usługi Java zajmują się uwierzytelnianiem, konfiguracją, discovery i AI,
-natomiast Python obsługuje steganografię PNG i przetwarzanie zaszyfrowanych znaków wodnych.
+In short: the Java services handle authentication, configuration, discovery and AI,
+while Python handles PNG steganography and encrypted watermark processing.
 
 ## Polecenia
 
