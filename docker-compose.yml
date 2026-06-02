@@ -134,6 +134,7 @@ services:
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       AUTH_SERVER_URL: http://auth-server:8081
       AI_SERVICE_URL: http://ai-service:8084
+      SUBSCRIPTION_SERVICE_URL: http://subscription-service:8085
       WATERMARK_APP_KEY: ${WATERMARK_APP_KEY:-local-dev-watermark-secret}
       WATERMARK_DEV_MODE: "true"
       INSTANCE_HOSTNAME: watermark-service
@@ -148,28 +149,7 @@ services:
         condition: service_started
       ai-service:
         condition: service_started
-    restart: unless-stopped
-
-  watermark-client:
-    build:
-      context: .
-      dockerfile: watermark-client/Dockerfile
-    container_name: watermark-client
-    environment:
-      SPRING_CONFIG_IMPORT: optional:configserver:http://${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}@config-server:8888
-      EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
-      EUREKA_USER: ${EUREKA_USER}
-      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
-    ports:
-      - "8083:8083"
-    depends_on:
-      config-server:
-        condition: service_healthy
-      eureka-server:
-        condition: service_started
-      watermark-service:
-        condition: service_started
-      auth-server:
+      subscription-service:
         condition: service_started
     restart: unless-stopped
 
