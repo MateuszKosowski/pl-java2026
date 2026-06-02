@@ -1,0 +1,52 @@
+server:
+  port: ${SERVER_PORT:8085}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+subscription:
+  virtual-threads:
+    enabled: false
+  plans:
+    free:
+      monthly-tokens: 50
+      allowed-operations:
+        - CAPACITY_CHECK
+        - DETECT
+        - EMBED_768
+    standard:
+      monthly-tokens: 500
+      allowed-operations:
+        - CAPACITY_CHECK
+        - DETECT
+        - EXTRACT
+        - VISUALIZE
+        - EMBED_768
+        - EMBED_1024
+    pro:
+      monthly-tokens: 2500
+      allowed-operations:
+        - CAPACITY_CHECK
+        - DETECT
+        - EXTRACT
+        - VISUALIZE
+        - EMBED_768
+        - EMBED_1024
+        - AI_CLASSIFICATION
+  token-costs:
+    CAPACITY_CHECK: 0
+    DETECT: 1
+    EXTRACT: 2
+    VISUALIZE: 3
+    EMBED_768: 5
+    EMBED_1024: 8
+    AI_CLASSIFICATION: 2
+  payments:
+    provider: mock
