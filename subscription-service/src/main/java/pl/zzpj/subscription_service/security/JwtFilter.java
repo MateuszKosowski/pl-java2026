@@ -69,23 +69,11 @@ public class JwtFilter extends OncePerRequestFilter {
             throw new IllegalArgumentException("JWT payload is missing");
         }
         String payload = new String(Base64.getUrlDecoder().decode(chunks[1]), StandardCharsets.UTF_8);
-        String subject = extractJsonStringField(payload, "sub");
         String userId = extractJsonNumberField(payload, "userId");
-        if (subject == null || userId == null) {
+        if (userId == null) {
             throw new IllegalArgumentException("JWT principal claims are missing");
         }
-        return subject + "-" + userId;
-    }
-
-    private String extractJsonStringField(String json, String field) {
-        String search = "\"" + field + "\":\"";
-        int start = json.indexOf(search);
-        if (start == -1) {
-            return null;
-        }
-        start += search.length();
-        int end = json.indexOf("\"", start);
-        return end != -1 ? json.substring(start, end) : null;
+        return userId;
     }
 
     private String extractJsonNumberField(String json, String field) {
