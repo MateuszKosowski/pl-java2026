@@ -115,27 +115,6 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  watermark-client:
-    build:
-      context: .
-      dockerfile: watermark-client/Dockerfile
-    container_name: watermark-client
-    environment:
-      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
-      EUREKA_URL: http://eureka-server:8761/eureka/
-    ports:
-      - "8083:8083"
-    depends_on:
-      config-server:
-        condition: service_healthy
-      eureka-server:
-        condition: service_started
-      watermark-service:
-        condition: service_started
-      auth-server:
-        condition: service_started
-    restart: unless-stopped
-
   gui:
     build:
       context: ./gui
@@ -194,8 +173,6 @@ services:
         :auth-server:sonar
         :config-server:sonar
         :eureka-server:sonar
-        :watermark-service:sonar
-        :watermark-client:sonar
         -Dsonar.host.url=http://sonarqube:9000
         -Dsonar.token=$$SONARQUBE_TOKEN
     volumes:

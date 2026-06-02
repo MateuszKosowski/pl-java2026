@@ -8,7 +8,7 @@ Production replacement for the Java `watermark-service`. Uses [`invisible-waterm
 docker compose up -d --build watermark-service
 ```
 
-Eureka name: `WATERMARK-SERVICE`. Port: `8082`. Drop-in for the Java service — clients (GUI, watermark-client, Feign) need no changes.
+Eureka name: `WATERMARK-SERVICE`. Port: `8082`. Drop-in for the (now removed) Java service — clients (GUI, Feign) need no changes.
 
 ## Endpoints
 
