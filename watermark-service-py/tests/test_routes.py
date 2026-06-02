@@ -71,7 +71,7 @@ def test_embed_returns_png_with_classification_and_capacity_headers(client):
             },
         )
     )
-    _mock_subscription_reservations(1)
+    _mock_subscription_reservations(2)
     token = _jwt("alice", 7)
     response = client.post(
         "/api/watermark/embed",
@@ -92,7 +92,7 @@ def test_embed_returns_png_with_classification_and_capacity_headers(client):
 def test_detect_then_extract_roundtrip(client):
     respx.post("http://auth-server:8081/auth/validate").mock(return_value=Response(200, json=True))
     respx.post("http://ai-service:8084/api/classify").mock(return_value=Response(500))
-    _mock_subscription_reservations(3)
+    _mock_subscription_reservations(4)
 
     token = _jwt("alice", 7)
     embed_response = client.post(
@@ -130,7 +130,7 @@ def test_embed_on_smaller_image_picks_lower_tier(client):
     """A 1024x1024 image only qualifies for the 768-bit tier (1024-bit needs long ≥ 1600)."""
     respx.post("http://auth-server:8081/auth/validate").mock(return_value=Response(200, json=True))
     respx.post("http://ai-service:8084/api/classify").mock(return_value=Response(500))
-    _mock_subscription_reservations(2)
+    _mock_subscription_reservations(3)
 
     token = _jwt("alice", 7)
     embed_response = client.post(
@@ -153,11 +153,11 @@ def test_embed_on_smaller_image_picks_lower_tier(client):
 
 
 @respx.mock
-def test_embed_fhd_landscape_uses_largest_tier(client):
-    """1920x1080 screenshot should use the 1024-bit tier."""
+def test_embed_fhd_landscape_uses_basic_tier(client):
+    """1920x1080 screenshot should stay in the 768-bit tier."""
     respx.post("http://auth-server:8081/auth/validate").mock(return_value=Response(200, json=True))
     respx.post("http://ai-service:8084/api/classify").mock(return_value=Response(500))
-    _mock_subscription_reservations(1)
+    _mock_subscription_reservations(2)
 
     token = _jwt("alice", 7)
     response = client.post(
@@ -167,14 +167,14 @@ def test_embed_fhd_landscape_uses_largest_tier(client):
         data={"text": "fhd screenshot"},
     )
     assert response.status_code == 200
-    assert response.headers["x-watermark-length-bits"] == "1024"
+    assert response.headers["x-watermark-length-bits"] == "768"
 
 
 @respx.mock
 def test_extract_by_wrong_user_returns_403(client):
     respx.post("http://auth-server:8081/auth/validate").mock(return_value=Response(200, json=True))
     respx.post("http://ai-service:8084/api/classify").mock(return_value=Response(500))
-    _mock_subscription_reservations(2)
+    _mock_subscription_reservations(3)
 
     alice = _jwt("alice", 7)
     bob = _jwt("bob", 8)
@@ -274,7 +274,7 @@ def test_capacity_for_medium_image_picks_lower_tier(client):
 
 @respx.mock
 def test_capacity_for_fhd_landscape(client):
-    """1920x1080 reports the 1024-bit tier."""
+    """1920x1080 reports the 768-bit tier."""
     respx.post("http://auth-server:8081/auth/validate").mock(return_value=Response(200, json=True))
     token = _jwt("alice", 7)
     response = client.post(
@@ -285,7 +285,7 @@ def test_capacity_for_fhd_landscape(client):
     assert response.status_code == 200
     body = response.json()
     assert body["imageOk"] is True
-    assert body["lengthBits"] == 1024
+    assert body["lengthBits"] == 768
     assert body["imageWidth"] == 1920
     assert body["imageHeight"] == 1080
 

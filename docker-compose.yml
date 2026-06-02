@@ -111,6 +111,10 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
+      SPRING_FLYWAY_SCHEMAS: subscription_schema
+      SPRING_FLYWAY_DEFAULT_SCHEMA: subscription_schema
+      SPRING_FLYWAY_TABLE: flyway_schema_history
+      SPRING_JPA_PROPERTIES_HIBERNATE_DEFAULT_SCHEMA: subscription_schema
     ports:
       - "8085:8085"
     depends_on:

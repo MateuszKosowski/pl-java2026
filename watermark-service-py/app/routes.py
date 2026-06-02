@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
-from app.ai_client import classify_or_fallback
+from app.ai_client import ClassificationResult, classify_or_fallback
 from app.auth import require_principal
 from app.config import Settings
 from app.subscription_client import (
@@ -30,6 +30,12 @@ _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 # 25 MB matches the multipart limit in the config-server-served application.yaml.
 _MAX_IMAGE_BYTES = 25 * 1024 * 1024
 _MAX_TEXT_BYTES = 4096
+_UNKNOWN_CLASSIFICATION = ClassificationResult(
+    category="unknown",
+    label="unknown",
+    confidence=0.0,
+    category_confidence=0.0,
+)
 
 
 def _settings(request: Request) -> Settings:
@@ -53,6 +59,43 @@ def _read_png(image_bytes: bytes) -> None:
             400,
             detail="Embed accepts PNG only. JPG/WebP destroy the watermark on the very first re-encode.",
         )
+
+
+async def _classify_when_entitled(
+    settings: Settings,
+    *,
+    image_bytes: bytes,
+    filename: str | None,
+    content_type: str | None,
+    bearer_token: str | None,
+) -> ClassificationResult:
+    try:
+        reservation = await reserve_tokens(
+            settings,
+            operation="AI_CLASSIFICATION",
+            bearer_token=bearer_token,
+            external_operation_id=f"classify:{filename or 'image'}",
+        )
+    except HTTPException as exc:
+        if exc.status_code in (403, 409):
+            logger.info("Skipping AI classification: %s", exc.detail)
+            return _UNKNOWN_CLASSIFICATION
+        raise
+
+    try:
+        classification = await classify_or_fallback(
+            settings,
+            image_bytes=image_bytes,
+            filename=filename,
+            content_type=content_type,
+            bearer_token=bearer_token,
+        )
+    except Exception:
+        await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+        raise
+
+    await consume_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+    return classification
 
 
 @router.post("/embed")
@@ -94,15 +137,14 @@ async def embed(
         external_operation_id=f"embed:{principal}:{image.filename or 'image'}",
     )
 
-    classification = await classify_or_fallback(
-        settings,
-        image_bytes=image_bytes,
-        filename=image.filename,
-        content_type=image.content_type,
-        bearer_token=bearer_token,
-    )
-
     try:
+        classification = await _classify_when_entitled(
+            settings,
+            image_bytes=image_bytes,
+            filename=image.filename,
+            content_type=image.content_type,
+            bearer_token=bearer_token,
+        )
         result = embed_text(
             image_bytes,
             text,

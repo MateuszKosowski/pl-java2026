@@ -7,7 +7,7 @@ import jakarta.persistence.Table;
 import pl.zzpj.subscription_service.domain.token.TokenBalance;
 
 @Entity
-@Table(name = "token_balances")
+@Table(name = "token_balances", schema = "subscription_schema")
 public class TokenBalanceEntity {
 
     @Id

@@ -12,7 +12,7 @@ import pl.zzpj.subscription_service.domain.subscription.PlanCode;
 import java.time.Instant;
 
 @Entity
-@Table(name = "active_subscriptions")
+@Table(name = "active_subscriptions", schema = "subscription_schema")
 public class ActiveSubscriptionEntity {
 
     @Id

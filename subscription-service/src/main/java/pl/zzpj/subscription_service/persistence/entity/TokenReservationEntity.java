@@ -14,7 +14,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "token_reservations")
+@Table(name = "token_reservations", schema = "subscription_schema")
 public class TokenReservationEntity {
 
     @Id

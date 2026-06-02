@@ -1,4 +1,4 @@
-INSERT INTO active_subscriptions (user_id, plan_code, active_from, active_until)
+INSERT INTO subscription_schema.active_subscriptions (user_id, plan_code, active_from, active_until)
 VALUES
     ('1', 'PRO', CURRENT_TIMESTAMP, NULL),
     ('2', 'FREE', CURRENT_TIMESTAMP, NULL),
@@ -7,7 +7,7 @@ VALUES
     ('5', 'FREE', CURRENT_TIMESTAMP, NULL)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO token_balances (user_id, available_tokens, reserved_tokens)
+INSERT INTO subscription_schema.token_balances (user_id, available_tokens, reserved_tokens)
 VALUES
     ('1', 2500, 0),
     ('2', 50, 0),

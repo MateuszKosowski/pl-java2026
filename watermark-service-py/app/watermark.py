@@ -33,9 +33,15 @@ TIERS: tuple[tuple[int, int, int], ...] = (
     (1024, 1024, 768),   # 1024×1024+ (square OK), photos that didn't qualify for tier A
 )
 
+TIERS = (
+    (1024, 1024, 1024),  # Above FHD pixel count uses the larger token tier.
+    (1024, 1024, 768),   # Basic tier: 1024x1024 up to and including FHD.
+)
+
 KNOWN_LENGTHS_BITS: tuple[int, ...] = tuple(bits for _, _, bits in TIERS)
 MIN_SHORT_SIDE: int = TIERS[-1][0]
 MIN_LONG_SIDE: int = TIERS[-1][1]
+FULL_HD_PIXELS: int = 1920 * 1080
 
 
 @dataclass(frozen=True)
@@ -103,11 +109,12 @@ def _tiers_for_image(width: int, height: int) -> list[int]:
     """
     short = min(width, height)
     long_side = max(width, height)
-    return [
-        bits
-        for min_short, min_long, bits in TIERS
-        if short >= min_short and long_side >= min_long
-    ]
+    if short < MIN_SHORT_SIDE or long_side < MIN_LONG_SIDE:
+        return []
+
+    if width * height > FULL_HD_PIXELS:
+        return [1024, 768]
+    return [768]
 
 
 def select_length_bits(width: int, height: int) -> int:
