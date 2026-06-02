@@ -6,6 +6,7 @@ import os
 os.environ["CONFIG_SERVER_URL"] = ""
 os.environ["WATERMARK_APP_KEY"] = "test-app-key-deterministic"
 os.environ["EUREKA_URL"] = ""
+os.environ["SUBSCRIPTION_SERVICE_URL"] = "http://subscription-service:8085"
 
 import pytest
 from fastapi.testclient import TestClient
