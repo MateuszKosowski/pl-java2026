@@ -206,8 +206,6 @@ services:
         :auth-server:sonar
         :config-server:sonar
         :eureka-server:sonar
-        :watermark-service:sonar
-        :watermark-client:sonar
         -Dsonar.host.url=http://sonarqube:9000
         -Dsonar.token=$$SONARQUBE_TOKEN
     volumes:
