@@ -1,14 +1,23 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
-from app.ai_client import classify_or_fallback
+from app.ai_client import ClassificationResult, classify_or_fallback
 from app.auth import require_principal
 from app.config import Settings
+from app.subscription_client import (
+    consume_reservation,
+    operation_for_length_bits,
+    release_reservation,
+    reserve_tokens,
+)
 from app.watermark import (
     capacity_report,
     detect_text,
@@ -24,6 +33,12 @@ _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 # 25 MB matches the multipart limit in the config-server-served application.yaml.
 _MAX_IMAGE_BYTES = 25 * 1024 * 1024
 _MAX_TEXT_BYTES = 4096
+_UNKNOWN_CLASSIFICATION = ClassificationResult(
+    category="unknown",
+    label="unknown",
+    confidence=0.0,
+    category_confidence=0.0,
+)
 
 
 def _settings(request: Request) -> Settings:
@@ -37,6 +52,28 @@ def _bearer_from_request(request: Request) -> str | None:
     return None
 
 
+def _jwt_payload(token: str | None) -> dict:
+    if not token:
+        return {}
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return {}
+        payload_segment = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_segment))
+        return payload if isinstance(payload, dict) else {}
+    except (ValueError, json.JSONDecodeError, binascii.Error):
+        return {}
+
+
+def _is_admin_token(token: str | None) -> bool:
+    payload = _jwt_payload(token)
+    role = payload.get("role")
+    if isinstance(role, str) and role.upper() == "ADMIN":
+        return True
+    return payload.get("sub") == "admin" and payload.get("userId") == 1
+
+
 def _read_png(image_bytes: bytes) -> None:
     """Reject non-PNG uploads on the embed path so the GUI's PNG-only contract
     is enforced at the server boundary, not just by the file-picker filter."""
@@ -47,6 +84,43 @@ def _read_png(image_bytes: bytes) -> None:
             400,
             detail="Embed accepts PNG only. JPG/WebP destroy the watermark on the very first re-encode.",
         )
+
+
+async def _classify_when_entitled(
+    settings: Settings,
+    *,
+    image_bytes: bytes,
+    filename: str | None,
+    content_type: str | None,
+    bearer_token: str | None,
+) -> ClassificationResult:
+    try:
+        reservation = await reserve_tokens(
+            settings,
+            operation="AI_CLASSIFICATION",
+            bearer_token=bearer_token,
+            external_operation_id=f"classify:{filename or 'image'}",
+        )
+    except HTTPException as exc:
+        if exc.status_code in (403, 409):
+            logger.info("Skipping AI classification: %s", exc.detail)
+            return _UNKNOWN_CLASSIFICATION
+        raise
+
+    try:
+        classification = await classify_or_fallback(
+            settings,
+            image_bytes=image_bytes,
+            filename=filename,
+            content_type=content_type,
+            bearer_token=bearer_token,
+        )
+    except Exception:
+        await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+        raise
+
+    await consume_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+    return classification
 
 
 @router.post("/embed")
@@ -80,15 +154,22 @@ async def embed(
             detail=f"Text too long: max {report.max_text_bytes} bytes for this image and owner.",
         )
 
-    classification = await classify_or_fallback(
+    bearer_token = _bearer_from_request(request)
+    reservation = await reserve_tokens(
         settings,
-        image_bytes=image_bytes,
-        filename=image.filename,
-        content_type=image.content_type,
-        bearer_token=_bearer_from_request(request),
+        operation=operation_for_length_bits(report.length_bits),
+        bearer_token=bearer_token,
+        external_operation_id=f"embed:{principal}:{image.filename or 'image'}",
     )
 
     try:
+        classification = await _classify_when_entitled(
+            settings,
+            image_bytes=image_bytes,
+            filename=image.filename,
+            content_type=image.content_type,
+            bearer_token=bearer_token,
+        )
         result = embed_text(
             image_bytes,
             text,
@@ -96,12 +177,19 @@ async def embed(
             app_key=settings.watermark_app_key,
         )
     except ValueError as exc:
+        await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
         raise HTTPException(400, detail=str(exc))
     except RuntimeError as exc:
         # embed verification failed at every tier — image content is
         # pathological for the watermark; user can try a larger image.
         logger.warning("Embed verification failed for principal=%s: %s", principal, exc)
+        await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
         raise HTTPException(422, detail=str(exc))
+    except Exception:
+        await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+        raise
+
+    await consume_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
 
     return Response(
         content=result.png_bytes,
@@ -127,7 +215,14 @@ async def detect(
     image_bytes = await image.read()
     if len(image_bytes) > _MAX_IMAGE_BYTES:
         raise HTTPException(413, detail=f"Image too large (max {_MAX_IMAGE_BYTES} bytes)")
-    detection = detect_text(image_bytes, app_key=settings.watermark_app_key)
+    bearer_token = _bearer_from_request(request)
+    reservation = await reserve_tokens(settings, operation="DETECT", bearer_token=bearer_token)
+    try:
+        detection = detect_text(image_bytes, app_key=settings.watermark_app_key)
+    except Exception:
+        await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+        raise
+    await consume_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
     return {
         "watermarked": detection.watermarked,
         "ownerIdentity": detection.owner_identity,
@@ -146,11 +241,22 @@ async def extract(
     image_bytes = await image.read()
     if len(image_bytes) > _MAX_IMAGE_BYTES:
         raise HTTPException(413, detail=f"Image too large (max {_MAX_IMAGE_BYTES} bytes)")
-    detection = detect_text(image_bytes, app_key=settings.watermark_app_key)
-    if not detection.watermarked:
-        raise HTTPException(400, detail="No watermark found in this image")
-    if detection.owner_identity != principal:
-        raise HTTPException(403, detail="Requester is not allowed to read this watermark")
+    bearer_token = _bearer_from_request(request)
+    reservation = await reserve_tokens(settings, operation="EXTRACT", bearer_token=bearer_token)
+    try:
+        detection = detect_text(image_bytes, app_key=settings.watermark_app_key)
+        if not detection.watermarked:
+            await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+            raise HTTPException(400, detail="No watermark found in this image")
+        if detection.owner_identity != principal and not _is_admin_token(bearer_token):
+            await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+            raise HTTPException(403, detail="Requester is not allowed to read this watermark")
+    except HTTPException:
+        raise
+    except Exception:
+        await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+        raise
+    await consume_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
     return {"ownerIdentity": detection.owner_identity, "text": detection.text}
 
 
@@ -164,10 +270,17 @@ async def visualize_endpoint(
     image_bytes = await image.read()
     if len(image_bytes) > _MAX_IMAGE_BYTES:
         raise HTTPException(413, detail=f"Image too large (max {_MAX_IMAGE_BYTES} bytes)")
+    bearer_token = _bearer_from_request(request)
+    reservation = await reserve_tokens(settings, operation="VISUALIZE", bearer_token=bearer_token)
     try:
         heatmap = visualize(image_bytes, app_key=settings.watermark_app_key)
     except ValueError as exc:
+        await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
         raise HTTPException(400, detail=str(exc))
+    except Exception:
+        await release_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
+        raise
+    await consume_reservation(settings, reservation_id=reservation.reservation_id, bearer_token=bearer_token)
     return Response(content=heatmap, media_type="image/png")
 
 

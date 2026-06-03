@@ -97,6 +97,35 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  subscription-service:
+    build:
+      context: .
+      dockerfile: subscription-service/Dockerfile
+    container_name: subscription-service
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}@config-server:8888
+      SERVER_PORT: 8085
+      EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
+      EUREKA_USER: ${EUREKA_USER}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      SPRING_FLYWAY_SCHEMAS: subscription_schema
+      SPRING_FLYWAY_DEFAULT_SCHEMA: subscription_schema
+      SPRING_FLYWAY_TABLE: flyway_schema_history
+      SPRING_JPA_PROPERTIES_HIBERNATE_DEFAULT_SCHEMA: subscription_schema
+    ports:
+      - "8085:8085"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+      postgres-db:
+        condition: service_started
+    restart: unless-stopped
+
   watermark-service:
     build:
       context: ./watermark-service-py
@@ -109,6 +138,7 @@ services:
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
       AUTH_SERVER_URL: http://auth-server:8081
       AI_SERVICE_URL: http://ai-service:8084
+      SUBSCRIPTION_SERVICE_URL: http://subscription-service:8085
       WATERMARK_APP_KEY: ${WATERMARK_APP_KEY:-local-dev-watermark-secret}
       WATERMARK_DEV_MODE: "true"
       INSTANCE_HOSTNAME: watermark-service
@@ -123,28 +153,7 @@ services:
         condition: service_started
       ai-service:
         condition: service_started
-    restart: unless-stopped
-
-  watermark-client:
-    build:
-      context: .
-      dockerfile: watermark-client/Dockerfile
-    container_name: watermark-client
-    environment:
-      SPRING_CONFIG_IMPORT: optional:configserver:http://${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}@config-server:8888
-      EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
-      EUREKA_USER: ${EUREKA_USER}
-      EUREKA_PASSWORD: ${EUREKA_PASSWORD}
-    ports:
-      - "8083:8083"
-    depends_on:
-      config-server:
-        condition: service_healthy
-      eureka-server:
-        condition: service_started
-      watermark-service:
-        condition: service_started
-      auth-server:
+      subscription-service:
         condition: service_started
     restart: unless-stopped
 
@@ -159,6 +168,8 @@ services:
       auth-server:
         condition: service_started
       watermark-service:
+        condition: service_started
+      subscription-service:
         condition: service_started
     restart: unless-stopped
 
@@ -206,6 +217,7 @@ services:
         :auth-server:sonar
         :config-server:sonar
         :eureka-server:sonar
+        :subscription-service:sonar
         -Dsonar.host.url=http://sonarqube:9000
         -Dsonar.token=$$SONARQUBE_TOKEN
     volumes:

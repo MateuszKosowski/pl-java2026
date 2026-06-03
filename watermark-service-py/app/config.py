@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     eureka_url: str = "http://eureka-server:8761/eureka/"
     auth_server_url: str = "http://auth-server:8081"
     ai_service_url: str = "http://ai-service:8084"
+    subscription_service_url: str = "http://subscription-service:8085"
     watermark_app_key: str = DEFAULT_DEV_APP_KEY
     log_level: str = "INFO"
     instance_hostname: str = "watermark-service"
@@ -46,6 +47,7 @@ _PROPERTY_KEY_MAP: dict[str, str] = {
     "watermark.app-key": "watermark_app_key",
     "auth-server.url": "auth_server_url",
     "ai-service.url": "ai_service_url",
+    "subscription-service.url": "subscription_service_url",
     "logging.level.root": "log_level",
 }
 

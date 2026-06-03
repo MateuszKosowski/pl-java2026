@@ -63,6 +63,6 @@ async def classify_or_fallback(
             confidence=float(body.get("confidence", 0.0)),
             category_confidence=float(body.get("categoryConfidence", 0.0)),
         )
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         logger.warning("ai-service classification failed: %s", exc)
         return _UNKNOWN

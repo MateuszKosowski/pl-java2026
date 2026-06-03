@@ -7,6 +7,8 @@ export default defineConfig({
 	// also work with `npm run dev`. In Docker, nginx handles this routing instead.
 	server: {
 		proxy: {
+			'/api/subscriptions': 'http://localhost:8085',
+			'/api/tokens': 'http://localhost:8085',
 			'/api': 'http://localhost:8082',
 			'/auth': 'http://localhost:8081'
 		}
