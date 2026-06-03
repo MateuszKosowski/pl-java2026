@@ -171,6 +171,15 @@
         return `EMBED_${capacity.lengthBits}`;
     }
 
+    function embedActionStatus() {
+        const operation = embedOperation();
+        return operation ? actionStatus(operation) : '';
+    }
+
+    function embedInputDisabled() {
+        return Boolean(embedActionStatus());
+    }
+
     function embedAiStatus() {
         const operation = embedOperation();
         if (!operation || !tokenBalance) return '';
@@ -306,17 +315,17 @@
     async function embedWatermark() {
         const validation = validateImage(embedFiles);
         if (validation) { embedError = validation; return; }
-        if (!watermarkText.trim()) { embedError = 'Wpisz tekst do ukrycia.'; return; }
         if (capacityChecking) { embedError = 'Poczekaj na sprawdzenie pojemności obrazu.'; return; }
         if (!capacity?.imageOk) { embedError = 'Obraz nie spełnia minimalnych wymagań watermarkingu.'; return; }
-        if (utf8ByteLength(watermarkText) > capacity.maxTextBytes) {
-            embedError = `Tekst jest za długi. Limit dla tego obrazu to ${capacity.maxTextBytes} bajtów.`;
-            return;
-        }
         const operation = embedOperation();
         if (!operation) { embedError = 'Nie udało się ustalić typu operacji.'; return; }
         const status = actionStatus(operation);
         if (status) { embedError = status; return; }
+        if (!watermarkText.trim()) { embedError = 'Wpisz tekst do ukrycia.'; return; }
+        if (utf8ByteLength(watermarkText) > capacity.maxTextBytes) {
+            embedError = `Tekst jest za długi. Limit dla tego obrazu to ${capacity.maxTextBytes} bajtów.`;
+            return;
+        }
 
         embedError = '';
         embedProcessing = true;
@@ -508,12 +517,18 @@
                     Image is too small: {capacity.imageWidth}x{capacity.imageHeight}. Minimum is {capacity.minImageWidth}x{capacity.minImageHeight}.
                 </div>
             {:else if capacity}
+                {@const embedStatus = embedActionStatus()}
                 <div class="capacity-grid">
                     <div><span>Size</span><strong>{capacity.imageWidth}x{capacity.imageHeight}</strong></div>
                     <div><span>Tier</span><strong>{embedOperation()}</strong></div>
                     <div><span>Text limit</span><strong>{capacity.maxTextBytes} B</strong></div>
-                    <div><span>Plan check</span><strong>{actionStatus(embedOperation()) || 'Allowed'}</strong></div>
+                    <div class:blocked={embedStatus}><span>Plan check</span><strong>{embedStatus || 'Allowed'}</strong></div>
                 </div>
+                {#if embedStatus}
+                    <div class="alert alert-warning">
+                        This image requires {operationName(embedOperation())}, which is not available for the current plan or token balance. The embed action is disabled for this image.
+                    </div>
+                {/if}
                 {#if embedAiStatus()}
                     <div class="notice">{embedAiStatus()}</div>
                 {/if}
@@ -528,13 +543,18 @@
                         </small>
                     {/if}
                 </span>
-                <input type="text" bind:value={watermarkText} placeholder="Text to hide in the image" />
+                <input
+                    type="text"
+                    bind:value={watermarkText}
+                    placeholder="Text to hide in the image"
+                    disabled={embedInputDisabled()}
+                />
             </label>
 
             <button
                 class="btn btn-primary"
                 onclick={embedWatermark}
-                disabled={embedProcessing || capacityChecking || (capacity !== null && !capacity.imageOk)}
+                disabled={embedProcessing || capacityChecking || (capacity !== null && !capacity.imageOk) || embedInputDisabled()}
             >
                 {embedProcessing ? 'Processing...' : 'Generate watermarked PNG'}
             </button>
@@ -906,6 +926,15 @@
         border: 1px solid #e2e8f0;
         border-radius: 8px;
         padding: 10px;
+    }
+
+    .capacity-grid div.blocked {
+        background: #fff7ed;
+        border-color: #fdba74;
+    }
+
+    .capacity-grid div.blocked strong {
+        color: #9a3412;
     }
 
     small {
