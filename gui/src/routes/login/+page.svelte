@@ -1,7 +1,12 @@
 <script>
+    import { onMount } from 'svelte';
+
+    const registeredLoginKey = 'stegocloud_registered_login';
+
     let email = $state('admin@gmail.com');
     let password = $state('admin');
     let errorMessage = $state('');
+    let infoMessage = $state('');
     let isLoggingIn = $state(false);
 
     const demoUsers = [
@@ -11,6 +16,21 @@
         ['pro@gmail.com', 'pro'],
         ['lowbalance@gmail.com', 'lowbalance']
     ];
+
+    onMount(() => {
+        const registeredLogin = sessionStorage.getItem(registeredLoginKey);
+        if (!registeredLogin) return;
+
+        sessionStorage.removeItem(registeredLoginKey);
+        try {
+            const credentials = JSON.parse(registeredLogin);
+            email = credentials.email || email;
+            password = credentials.password || '';
+            infoMessage = 'Account created. You can log in now.';
+        } catch {
+            infoMessage = 'Account created. You can log in now.';
+        }
+    });
 
     async function handleLogin(event) {
         event.preventDefault();
@@ -42,6 +62,7 @@
     function useDemo(demoEmail, demoPassword) {
         email = demoEmail;
         password = demoPassword;
+        infoMessage = '';
     }
 </script>
 
@@ -68,17 +89,29 @@
             </button>
         </form>
 
+        <a class="register-link" href="/register">Create regular account</a>
+
+        {#if infoMessage}
+            <div class="success">{infoMessage}</div>
+        {/if}
+
         {#if errorMessage}
             <div class="error">{errorMessage}</div>
         {/if}
 
-        <div class="demo-list">
-            {#each demoUsers as [demoEmail, demoPassword]}
-                <button type="button" onclick={() => useDemo(demoEmail, demoPassword)}>
-                    {demoEmail.replace('@gmail.com', '')}
-                </button>
-            {/each}
-        </div>
+        <section class="demo-section" aria-label="Demo accounts">
+            <div class="demo-divider">
+                <span>Demo accounts</span>
+            </div>
+
+            <div class="demo-list">
+                {#each demoUsers as [demoEmail, demoPassword]}
+                    <button type="button" onclick={() => useDemo(demoEmail, demoPassword)}>
+                        {demoEmail.replace('@gmail.com', '')}
+                    </button>
+                {/each}
+            </div>
+        </section>
     </section>
 </main>
 
@@ -161,25 +194,69 @@
         color: #fff;
     }
 
+    .register-link {
+        display: block;
+        margin-top: 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 11px 14px;
+        color: #344054;
+        background: #fff;
+        font-weight: 800;
+        text-align: center;
+        text-decoration: none;
+    }
+
     button:disabled {
         background: #98a2b3;
         cursor: not-allowed;
     }
 
-    .error {
+    .error, .success {
         margin-top: 16px;
         padding: 11px 13px;
         border-radius: 8px;
+    }
+
+    .error {
         background: #fff1f2;
         border: 1px solid #fecdd3;
         color: #be123c;
+    }
+
+    .success {
+        background: #ecfdf3;
+        border: 1px solid #bbf7d0;
+        color: #15803d;
+    }
+
+    .demo-section {
+        margin-top: 20px;
+    }
+
+    .demo-divider {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 10px;
+        align-items: center;
+        color: #667085;
+        font-size: 0.78rem;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .demo-divider::before,
+    .demo-divider::after {
+        content: "";
+        height: 1px;
+        background: #d9e2ec;
     }
 
     .demo-list {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 8px;
-        margin-top: 20px;
+        margin-top: 14px;
     }
 
     .demo-list button {

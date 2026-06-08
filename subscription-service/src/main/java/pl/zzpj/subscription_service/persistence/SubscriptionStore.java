@@ -47,12 +47,17 @@ public class SubscriptionStore {
     }
 
     private UserSubscriptionState create(UserSubscriptionState initialState) {
-        ActiveSubscriptionEntity subscription = subscriptionRepository.save(
-                ActiveSubscriptionEntity.from(initialState.subscription())
+        subscriptionRepository.insertIfMissing(
+                initialState.subscription().userId(),
+                initialState.subscription().planCode().name(),
+                initialState.subscription().activeFrom()
         );
-        TokenBalanceEntity tokenBalance = tokenBalanceRepository.save(
-                TokenBalanceEntity.from(initialState.tokenBalance())
+        tokenBalanceRepository.insertIfMissing(
+                initialState.tokenBalance().userId(),
+                initialState.tokenBalance().availableTokens(),
+                initialState.tokenBalance().reservedTokens()
         );
-        return new UserSubscriptionState(subscription.toDomain(), tokenBalance.toDomain());
+        return find(initialState.subscription().userId())
+                .orElseThrow(() -> new IllegalStateException("Subscription state could not be created"));
     }
 }
