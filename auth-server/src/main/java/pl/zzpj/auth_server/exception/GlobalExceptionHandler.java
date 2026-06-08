@@ -31,6 +31,18 @@ public class GlobalExceptionHandler {
                 .body("Invalid JSON format or unknown properties in request.");
     }
 
+    @ExceptionHandler(UnknownRegistrationPropertyException.class)
+    public ResponseEntity<String> handleUnknownRegistrationProperty(UnknownRegistrationPropertyException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateUserFieldException.class)
+    public ResponseEntity<Map<String, String>> handleDuplicateUserField(DuplicateUserFieldException ex) {
+        Map<String, String> errors = new HashMap<>();
+        errors.put(ex.getField(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errors);
+    }
+
     @ExceptionHandler({BadCredentialsException.class, EmailNotFoundException.class})
     public ResponseEntity<String> handleAuthenticationErrors(Exception ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

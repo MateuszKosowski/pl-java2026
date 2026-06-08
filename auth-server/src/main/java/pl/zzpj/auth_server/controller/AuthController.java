@@ -8,8 +8,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import pl.zzpj.auth_server.dto.LoginRequest;
 import pl.zzpj.auth_server.dto.LoginResponse;
+import pl.zzpj.auth_server.dto.RegisterRequest;
+import pl.zzpj.auth_server.dto.RegisterResponse;
 import pl.zzpj.auth_server.repository.UserRepository;
 import pl.zzpj.auth_server.service.JwtService;
+import pl.zzpj.auth_server.service.RegistrationService;
 
 @RestController
 @RequestMapping("/auth")
@@ -19,6 +22,13 @@ public class AuthController {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RegistrationService registrationService;
+
+    @PostMapping("/register")
+    public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegisterRequest request) {
+        RegisterResponse response = registrationService.register(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
