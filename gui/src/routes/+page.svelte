@@ -101,14 +101,9 @@
         accountLoading = true;
         accountError = '';
         try {
-            const [plansResponse, subscriptionResponse, tokensResponse] = await Promise.all([
-                apiGet('/api/subscriptions/plans'),
-                apiGet('/api/subscriptions/me'),
-                apiGet('/api/subscriptions/me/tokens')
-            ]);
-            plans = plansResponse;
-            subscription = subscriptionResponse;
-            tokenBalance = tokensResponse;
+            plans = await apiGet('/api/subscriptions/plans');
+            subscription = await apiGet('/api/subscriptions/me');
+            tokenBalance = await apiGet('/api/subscriptions/me/tokens');
         } catch (error) {
             accountError = error instanceof Error ? error.message : 'Nie udało się pobrać danych subskrypcji.';
         } finally {
