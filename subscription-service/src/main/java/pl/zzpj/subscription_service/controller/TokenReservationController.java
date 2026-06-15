@@ -3,20 +3,20 @@ package pl.zzpj.subscription_service.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.security.Principal;
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
 import pl.zzpj.subscription_service.application.TokenReservationCommandService;
 import pl.zzpj.subscription_service.application.UserIdentityResolver;
 import pl.zzpj.subscription_service.application.command.CreateTokenReservationCommand;
 import pl.zzpj.subscription_service.controller.dto.CreateTokenReservationRequest;
 import pl.zzpj.subscription_service.controller.dto.TokenReservationErrorResponse;
 import pl.zzpj.subscription_service.controller.dto.TokenReservationResponse;
+import pl.zzpj.subscription_service.domain.token.TokenReservation;
 import pl.zzpj.subscription_service.domain.token.decision.Accepted;
 import pl.zzpj.subscription_service.domain.token.decision.RejectedInsufficientTokens;
 import pl.zzpj.subscription_service.domain.token.decision.RejectedOperationNotAllowed;
@@ -24,8 +24,6 @@ import pl.zzpj.subscription_service.domain.token.decision.RejectedPlanNotFound;
 import pl.zzpj.subscription_service.domain.token.decision.TokenDecision;
 import pl.zzpj.subscription_service.persistence.entity.TokenReservationEntity;
 
-@RestController
-@RequestMapping("/api/tokens/reservations")
 @Tag(
     name = "Token Reservation",
     description = "API for managing token reservations for operations"
@@ -99,9 +97,17 @@ public class TokenReservationController {
 
     private ResponseEntity<?> toResponse(TokenDecision decision) {
         return switch (decision) {
-            case Accepted accepted -> ResponseEntity.status(
-                HttpStatus.CREATED
-            ).body(TokenReservationResponse.from(accepted.reservation()));
+            case Accepted(
+                TokenReservation reservation
+            ) -> ResponseEntity.status(HttpStatus.CREATED).body(
+                TokenReservationResponse.from(
+                    TokenReservationEntity.from(
+                        reservation,
+                        Instant.now(),
+                        null // externalOperationId is not available here, but we are just returning a view
+                    )
+                )
+            );
             case RejectedInsufficientTokens rejected -> ResponseEntity.status(
                 HttpStatus.CONFLICT
             ).body(
