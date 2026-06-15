@@ -1,20 +1,25 @@
 <script>
-    import { onMount } from 'svelte';
+    import { onMount } from "svelte";
 
-    let token = $state('');
-    let activeTab = $state('embed');
+    let token = $state("");
+    let activeTab = $state("embed");
     let accountLoading = $state(true);
-    let accountError = $state('');
+    let accountError = $state("");
     let subscription = $state(null);
     let tokenBalance = $state(null);
     let plans = $state([]);
-    let currentRole = $state('USER');
+    let currentRole = $state("USER");
+
+    let paymentSession = $state(null);
+    let paymentProcessing = $state(false);
+    let paymentError = $state("");
 
     const tabs = [
-        { id: 'embed', label: 'Embed' },
-        { id: 'detect', label: 'Detect' },
-        { id: 'extract', label: 'Extract' },
-        { id: 'visualize', label: 'Visualize' }
+        { id: "embed", label: "Embed" },
+        { id: "detect", label: "Detect" },
+        { id: "extract", label: "Extract" },
+        { id: "visualize", label: "Visualize" },
+        { id: "pricing", label: "Pricing" },
     ];
 
     const operationCosts = {
@@ -24,53 +29,53 @@
         VISUALIZE: 3,
         EMBED_768: 5,
         EMBED_1024: 8,
-        AI_CLASSIFICATION: 2
+        AI_CLASSIFICATION: 2,
     };
 
     const operationLabels = {
-        CAPACITY_CHECK: 'Capacity check',
-        DETECT: 'Detect',
-        EXTRACT: 'Extract',
-        VISUALIZE: 'Visualize',
-        EMBED_768: 'Embed basic',
-        EMBED_1024: 'Embed large',
-        AI_CLASSIFICATION: 'AI classification'
+        CAPACITY_CHECK: "Capacity check",
+        DETECT: "Detect",
+        EXTRACT: "Extract",
+        VISUALIZE: "Visualize",
+        EMBED_768: "Embed basic",
+        EMBED_1024: "Embed large",
+        AI_CLASSIFICATION: "AI classification",
     };
 
     let embedFiles = $state();
-    let watermarkText = $state('');
+    let watermarkText = $state("");
     let embedProcessing = $state(false);
     let resultImageUrl = $state(null);
     let classification = $state(null);
-    let embedError = $state('');
+    let embedError = $state("");
     let capacity = $state(null);
     let capacityChecking = $state(false);
     let capacityError = $state(null);
     let capacityAbort = null;
-    let lastProbedFileSignature = '';
+    let lastProbedFileSignature = "";
 
     let detectFiles = $state();
     let detectProcessing = $state(false);
     let detectResult = $state(null);
-    let detectError = $state('');
+    let detectError = $state("");
 
     let extractFiles = $state();
     let extractProcessing = $state(false);
     let extractResult = $state(null);
-    let extractNotice = $state('');
-    let extractError = $state('');
+    let extractNotice = $state("");
+    let extractError = $state("");
 
     let visualizeFiles = $state();
     let visualizeProcessing = $state(false);
     let visualizeImageUrl = $state(null);
-    let visualizeError = $state('');
+    let visualizeError = $state("");
 
     const textEncoder = new TextEncoder();
 
     onMount(async () => {
-        token = localStorage.getItem('jwt_token') ?? '';
+        token = localStorage.getItem("jwt_token") ?? "";
         if (!token) {
-            window.location.href = '/login';
+            window.location.href = "/login";
             return;
         }
         currentRole = readRole(token);
@@ -78,34 +83,37 @@
     });
 
     function logout() {
-        localStorage.removeItem('jwt_token');
-        window.location.href = '/login';
+        localStorage.removeItem("jwt_token");
+        window.location.href = "/login";
     }
 
     function readRole(jwt) {
         try {
-            const parts = jwt.split('.');
-            if (parts.length < 2) return 'USER';
-            const segment = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-            const padded = segment + '='.repeat((4 - segment.length % 4) % 4);
+            const parts = jwt.split(".");
+            if (parts.length < 2) return "USER";
+            const segment = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+            const padded = segment + "=".repeat((4 - (segment.length % 4)) % 4);
             const payload = JSON.parse(atob(padded));
             if (payload.role) return String(payload.role).toUpperCase();
-            if (payload.sub === 'admin' && payload.userId === 1) return 'ADMIN';
+            if (payload.sub === "admin" && payload.userId === 1) return "ADMIN";
         } catch {
-            return 'USER';
+            return "USER";
         }
-        return 'USER';
+        return "USER";
     }
 
     async function loadAccount() {
         accountLoading = true;
-        accountError = '';
+        accountError = "";
         try {
-            plans = await apiGet('/api/subscriptions/plans');
-            subscription = await apiGet('/api/subscriptions/me');
-            tokenBalance = await apiGet('/api/subscriptions/me/tokens');
+            plans = await apiGet("/api/subscriptions/plans");
+            subscription = await apiGet("/api/subscriptions/me");
+            tokenBalance = await apiGet("/api/subscriptions/me/tokens");
         } catch (error) {
-            accountError = error instanceof Error ? error.message : 'Nie udało się pobrać danych subskrypcji.';
+            accountError =
+                error instanceof Error
+                    ? error.message
+                    : "Nie udało się pobrać danych subskrypcji.";
         } finally {
             accountLoading = false;
         }
@@ -113,27 +121,86 @@
 
     async function refreshTokens() {
         try {
-            tokenBalance = await apiGet('/api/subscriptions/me/tokens');
+            tokenBalance = await apiGet("/api/subscriptions/me/tokens");
         } catch {
-            accountError = 'Nie udało się odświeżyć salda tokenów.';
+            accountError = "Nie udało się odświeżyć salda tokenów.";
         }
     }
 
     async function apiGet(url) {
         const response = await fetch(url, {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
         });
         if (response.status === 401) {
             logout();
-            throw new Error('Sesja wygasła.');
+            throw new Error("Sesja wygasła.");
         }
         if (!response.ok) throw new Error(await readError(response));
         return response.json();
     }
 
+    async function apiPost(url, body) {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(body),
+        });
+        if (response.status === 401) {
+            logout();
+            throw new Error("Sesja wygasła.");
+        }
+        if (!response.ok) throw new Error(await readError(response));
+        return response.json();
+    }
+
+    async function initiatePayment(targetPlan) {
+        paymentError = "";
+        paymentProcessing = true;
+        try {
+            paymentSession = await apiPost("/api/payments/mock/sessions", {
+                targetPlan,
+            });
+            activeTab = "pricing"; // Ensure we stay on pricing to see the session
+        } catch (error) {
+            paymentError =
+                error instanceof Error
+                    ? error.message
+                    : "Błąd podczas tworzenia sesji płatności.";
+        } finally {
+            paymentProcessing = false;
+        }
+    }
+
+    async function completePayment(outcome) {
+        if (!paymentSession) return;
+        paymentError = "";
+        paymentProcessing = true;
+        try {
+            paymentSession = await apiPost(
+                `/api/payments/mock/sessions/${paymentSession.id}/${outcome}`,
+                {},
+            );
+            if (outcome === "succeed") {
+                await loadAccount();
+            }
+        } catch (error) {
+            paymentError =
+                error instanceof Error
+                    ? error.message
+                    : "Błąd podczas finalizacji płatności.";
+        } finally {
+            paymentProcessing = false;
+        }
+    }
+
     function currentPlan() {
         if (!subscription) return null;
-        return plans.find((plan) => plan.code === subscription.planCode) ?? null;
+        return (
+            plans.find((plan) => plan.code === subscription.planCode) ?? null
+        );
     }
 
     function planAllows(operation) {
@@ -168,7 +235,7 @@
 
     function embedActionStatus() {
         const operation = embedOperation();
-        return operation ? actionStatus(operation) : '';
+        return operation ? actionStatus(operation) : "";
     }
 
     function embedInputDisabled() {
@@ -177,31 +244,35 @@
 
     function embedAiStatus() {
         const operation = embedOperation();
-        if (!operation || !tokenBalance) return '';
+        if (!operation || !tokenBalance) return "";
         const embedCost = operationCost(operation);
-        const aiCost = operationCost('AI_CLASSIFICATION');
-        if (!planAllows('AI_CLASSIFICATION')) return 'AI classification will be skipped by this plan.';
-        if (availableTokens() - embedCost >= aiCost) return `AI classification available: +${aiCost} tokens.`;
-        return 'AI classification will be skipped because the remaining token balance is too low.';
+        const aiCost = operationCost("AI_CLASSIFICATION");
+        if (!planAllows("AI_CLASSIFICATION"))
+            return "AI classification will be skipped by this plan.";
+        if (availableTokens() - embedCost >= aiCost)
+            return `AI classification available: +${aiCost} tokens.`;
+        return "AI classification will be skipped because the remaining token balance is too low.";
     }
 
     function actionStatus(operation) {
-        if (!subscription || !tokenBalance) return 'Ładowanie danych planu.';
-        if (!planAllows(operation)) return `Plan ${subscription.planCode} does not allow ${operationName(operation)}.`;
-        if (!hasTokensFor(operation)) return `Not enough tokens: requires ${operationCost(operation)}, available ${availableTokens()}.`;
-        return '';
+        if (!subscription || !tokenBalance) return "Ładowanie danych planu.";
+        if (!planAllows(operation))
+            return `Plan ${subscription.planCode} does not allow ${operationName(operation)}.`;
+        if (!hasTokensFor(operation))
+            return `Not enough tokens: requires ${operationCost(operation)}, available ${availableTokens()}.`;
+        return "";
     }
 
     function tabOperation(tabId) {
-        if (tabId === 'detect') return 'DETECT';
-        if (tabId === 'extract') return 'EXTRACT';
-        if (tabId === 'visualize') return 'VISUALIZE';
+        if (tabId === "detect") return "DETECT";
+        if (tabId === "extract") return "EXTRACT";
+        if (tabId === "visualize") return "VISUALIZE";
         return null;
     }
 
     function tabStatus(tabId) {
         const operation = tabOperation(tabId);
-        return operation ? actionStatus(operation) : '';
+        return operation ? actionStatus(operation) : "";
     }
 
     function tabDisabled(tabId) {
@@ -217,26 +288,27 @@
     }
 
     function validateImage(files) {
-        if (!files || files.length === 0) return 'Wybierz obraz z dysku.';
-        if (files[0].size < 100) return 'Wybrany plik jest zbyt mały lub uszkodzony.';
-        return '';
+        if (!files || files.length === 0) return "Wybierz obraz z dysku.";
+        if (files[0].size < 100)
+            return "Wybrany plik jest zbyt mały lub uszkodzony.";
+        return "";
     }
 
     function postImage(url, image, text) {
         const formData = new FormData();
-        formData.append('image', image);
-        if (text !== undefined) formData.append('text', text);
+        formData.append("image", image);
+        if (text !== undefined) formData.append("text", text);
         return fetch(url, {
-            method: 'POST',
+            method: "POST",
             headers: { Authorization: `Bearer ${token}` },
-            body: formData
+            body: formData,
         });
     }
 
     async function readError(response) {
         try {
             const data = await response.json();
-            if (typeof data.detail === 'string') return data.detail;
+            if (typeof data.detail === "string") return data.detail;
             if (data.detail?.message) return data.detail.message;
             if (data.message) return data.message;
             if (data.error) return data.error;
@@ -244,7 +316,7 @@
         } catch {
             // fall through
         }
-        return 'Wystąpił błąd podczas przetwarzania.';
+        return "Wystąpił błąd podczas przetwarzania.";
     }
 
     function utf8ByteLength(text) {
@@ -265,12 +337,12 @@
         capacityChecking = true;
         try {
             const formData = new FormData();
-            formData.append('image', embedFiles[0]);
-            const response = await fetch('/api/watermark/capacity', {
-                method: 'POST',
+            formData.append("image", embedFiles[0]);
+            const response = await fetch("/api/watermark/capacity", {
+                method: "POST",
                 headers: { Authorization: `Bearer ${token}` },
                 body: formData,
-                signal: controller.signal
+                signal: controller.signal,
             });
             if (controller.signal.aborted) return;
             if (response.ok) {
@@ -279,8 +351,9 @@
                 capacityError = await readError(response);
             }
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') return;
-            capacityError = 'Nie udało się sprawdzić pojemności obrazu.';
+            if (error instanceof DOMException && error.name === "AbortError")
+                return;
+            capacityError = "Nie udało się sprawdzić pojemności obrazu.";
         } finally {
             if (capacityAbort === controller) {
                 capacityAbort = null;
@@ -297,38 +370,60 @@
                 probeCapacity();
             }
         } else {
-            lastProbedFileSignature = '';
+            lastProbedFileSignature = "";
             capacity = null;
             capacityError = null;
         }
     });
 
     $effect(() => {
-        if (tabDisabled(activeTab)) activeTab = 'embed';
+        if (tabDisabled(activeTab)) activeTab = "embed";
     });
 
     async function embedWatermark() {
         const validation = validateImage(embedFiles);
-        if (validation) { embedError = validation; return; }
-        if (capacityChecking) { embedError = 'Poczekaj na sprawdzenie pojemności obrazu.'; return; }
-        if (!capacity?.imageOk) { embedError = 'Obraz nie spełnia minimalnych wymagań watermarkingu.'; return; }
+        if (validation) {
+            embedError = validation;
+            return;
+        }
+        if (capacityChecking) {
+            embedError = "Poczekaj na sprawdzenie pojemności obrazu.";
+            return;
+        }
+        if (!capacity?.imageOk) {
+            embedError = "Obraz nie spełnia minimalnych wymagań watermarkingu.";
+            return;
+        }
         const operation = embedOperation();
-        if (!operation) { embedError = 'Nie udało się ustalić typu operacji.'; return; }
+        if (!operation) {
+            embedError = "Nie udało się ustalić typu operacji.";
+            return;
+        }
         const status = actionStatus(operation);
-        if (status) { embedError = status; return; }
-        if (!watermarkText.trim()) { embedError = 'Wpisz tekst do ukrycia.'; return; }
+        if (status) {
+            embedError = status;
+            return;
+        }
+        if (!watermarkText.trim()) {
+            embedError = "Wpisz tekst do ukrycia.";
+            return;
+        }
         if (utf8ByteLength(watermarkText) > capacity.maxTextBytes) {
             embedError = `Tekst jest za długi. Limit dla tego obrazu to ${capacity.maxTextBytes} bajtów.`;
             return;
         }
 
-        embedError = '';
+        embedError = "";
         embedProcessing = true;
         resultImageUrl = null;
         classification = null;
 
         try {
-            const response = await postImage('/api/watermark/embed', embedFiles[0], watermarkText);
+            const response = await postImage(
+                "/api/watermark/embed",
+                embedFiles[0],
+                watermarkText,
+            );
             if (response.ok) {
                 classification = readClassification(response.headers);
                 resultImageUrl = URL.createObjectURL(await response.blob());
@@ -338,7 +433,7 @@
                 await refreshTokens();
             }
         } catch {
-            embedError = 'Błąd połączenia z serwerem.';
+            embedError = "Błąd połączenia z serwerem.";
         } finally {
             embedProcessing = false;
         }
@@ -346,15 +441,24 @@
 
     async function detectWatermark() {
         const validation = validateImage(detectFiles);
-        if (validation) { detectError = validation; return; }
-        const status = actionStatus('DETECT');
-        if (status) { detectError = status; return; }
+        if (validation) {
+            detectError = validation;
+            return;
+        }
+        const status = actionStatus("DETECT");
+        if (status) {
+            detectError = status;
+            return;
+        }
 
-        detectError = '';
+        detectError = "";
         detectProcessing = true;
         detectResult = null;
         try {
-            const response = await postImage('/api/watermark/detect', detectFiles[0]);
+            const response = await postImage(
+                "/api/watermark/detect",
+                detectFiles[0],
+            );
             if (response.ok) {
                 detectResult = await response.json();
             } else {
@@ -362,7 +466,7 @@
             }
             await refreshTokens();
         } catch {
-            detectError = 'Błąd połączenia z serwerem.';
+            detectError = "Błąd połączenia z serwerem.";
         } finally {
             detectProcessing = false;
         }
@@ -370,30 +474,40 @@
 
     async function extractWatermark() {
         const validation = validateImage(extractFiles);
-        if (validation) { extractError = validation; return; }
-        const status = actionStatus('EXTRACT');
-        if (status) { extractError = status; return; }
+        if (validation) {
+            extractError = validation;
+            return;
+        }
+        const status = actionStatus("EXTRACT");
+        if (status) {
+            extractError = status;
+            return;
+        }
 
-        extractError = '';
-        extractNotice = '';
+        extractError = "";
+        extractNotice = "";
         extractProcessing = true;
         extractResult = null;
         try {
-            const response = await postImage('/api/watermark/extract', extractFiles[0]);
+            const response = await postImage(
+                "/api/watermark/extract",
+                extractFiles[0],
+            );
             if (response.ok) {
                 extractResult = await response.json();
             } else if (response.status === 400) {
                 extractNotice = await readError(response);
             } else if (response.status === 403) {
-                extractError = currentRole === 'ADMIN'
-                    ? 'Admin should be allowed to read this watermark. Log in again to refresh the role claim.'
-                    : 'Nie jesteś właścicielem tego znaku wodnego.';
+                extractError =
+                    currentRole === "ADMIN"
+                        ? "Admin should be allowed to read this watermark. Log in again to refresh the role claim."
+                        : "Nie jesteś właścicielem tego znaku wodnego.";
             } else {
                 extractError = await readError(response);
             }
             await refreshTokens();
         } catch {
-            extractError = 'Błąd połączenia z serwerem.';
+            extractError = "Błąd połączenia z serwerem.";
         } finally {
             extractProcessing = false;
         }
@@ -401,15 +515,24 @@
 
     async function visualizeWatermark() {
         const validation = validateImage(visualizeFiles);
-        if (validation) { visualizeError = validation; return; }
-        const status = actionStatus('VISUALIZE');
-        if (status) { visualizeError = status; return; }
+        if (validation) {
+            visualizeError = validation;
+            return;
+        }
+        const status = actionStatus("VISUALIZE");
+        if (status) {
+            visualizeError = status;
+            return;
+        }
 
-        visualizeError = '';
+        visualizeError = "";
         visualizeProcessing = true;
         visualizeImageUrl = null;
         try {
-            const response = await postImage('/api/watermark/visualize', visualizeFiles[0]);
+            const response = await postImage(
+                "/api/watermark/visualize",
+                visualizeFiles[0],
+            );
             if (response.ok) {
                 visualizeImageUrl = URL.createObjectURL(await response.blob());
             } else {
@@ -417,25 +540,26 @@
             }
             await refreshTokens();
         } catch {
-            visualizeError = 'Błąd połączenia z serwerem.';
+            visualizeError = "Błąd połączenia z serwerem.";
         } finally {
             visualizeProcessing = false;
         }
     }
 
     function readClassification(headers) {
-        const category = headers.get('X-Image-Category');
-        const label = headers.get('X-Image-Label');
-        const confidence = headers.get('X-Image-Confidence');
-        const categoryConfidence = headers.get('X-Image-Category-Confidence');
+        const category = headers.get("X-Image-Category");
+        const label = headers.get("X-Image-Label");
+        const confidence = headers.get("X-Image-Confidence");
+        const categoryConfidence = headers.get("X-Image-Category-Confidence");
 
-        if (!category || category === 'unknown') return null;
-        const toPercent = (value) => (value ? Math.round(parseFloat(value) * 100) : null);
+        if (!category || category === "unknown") return null;
+        const toPercent = (value) =>
+            value ? Math.round(parseFloat(value) * 100) : null;
         return {
             category,
-            label: label && label !== 'unknown' ? label : null,
+            label: label && label !== "unknown" ? label : null,
             confidence: toPercent(confidence),
-            categoryConfidence: toPercent(categoryConfidence)
+            categoryConfidence: toPercent(categoryConfidence),
         };
     }
 </script>
@@ -457,7 +581,7 @@
         {:else}
             <div class="metric">
                 <span>Plan</span>
-                <strong>{subscription?.planCode ?? 'UNKNOWN'}</strong>
+                <strong>{subscription?.planCode ?? "UNKNOWN"}</strong>
             </div>
             <div class="metric">
                 <span>Available tokens</span>
@@ -471,7 +595,9 @@
                 <span>Role</span>
                 <strong>{currentRole}</strong>
             </div>
-            <button class="btn btn-outline compact" onclick={loadAccount}>Refresh</button>
+            <button class="btn btn-outline compact" onclick={loadAccount}
+                >Refresh</button
+            >
         {/if}
     </section>
 
@@ -481,9 +607,9 @@
             <button
                 class="tab"
                 class:active={activeTab === tab.id}
-                class:disabled={disabled}
+                class:disabled
                 onclick={() => selectTab(tab.id)}
-                disabled={disabled}
+                {disabled}
                 title={disabled ? tabStatus(tab.id) : tab.label}
             >
                 {tab.label}
@@ -491,11 +617,15 @@
         {/each}
     </nav>
 
-    {#if activeTab === 'embed'}
+    {#if activeTab === "embed"}
         <section class="panel">
             <div class="panel-heading">
                 <h2>Embed watermark</h2>
-                <span class="cost">{embedOperation() ? `${operationName(embedOperation())}: ${operationCost(embedOperation())} tokens` : 'Capacity check is free'}</span>
+                <span class="cost"
+                    >{embedOperation()
+                        ? `${operationName(embedOperation())}: ${operationCost(embedOperation())} tokens`
+                        : "Capacity check is free"}</span
+                >
             </div>
 
             <label class="field">
@@ -509,19 +639,36 @@
                 <div class="alert alert-error">{capacityError}</div>
             {:else if capacity && !capacity.imageOk}
                 <div class="alert alert-error">
-                    Image is too small: {capacity.imageWidth}x{capacity.imageHeight}. Minimum is {capacity.minImageWidth}x{capacity.minImageHeight}.
+                    Image is too small: {capacity.imageWidth}x{capacity.imageHeight}.
+                    Minimum is {capacity.minImageWidth}x{capacity.minImageHeight}.
                 </div>
             {:else if capacity}
                 {@const embedStatus = embedActionStatus()}
                 <div class="capacity-grid">
-                    <div><span>Size</span><strong>{capacity.imageWidth}x{capacity.imageHeight}</strong></div>
-                    <div><span>Tier</span><strong>{embedOperation()}</strong></div>
-                    <div><span>Text limit</span><strong>{capacity.maxTextBytes} B</strong></div>
-                    <div class:blocked={embedStatus}><span>Plan check</span><strong>{embedStatus || 'Allowed'}</strong></div>
+                    <div>
+                        <span>Size</span><strong
+                            >{capacity.imageWidth}x{capacity.imageHeight}</strong
+                        >
+                    </div>
+                    <div>
+                        <span>Tier</span><strong>{embedOperation()}</strong>
+                    </div>
+                    <div>
+                        <span>Text limit</span><strong
+                            >{capacity.maxTextBytes} B</strong
+                        >
+                    </div>
+                    <div class:blocked={embedStatus}>
+                        <span>Plan check</span><strong
+                            >{embedStatus || "Allowed"}</strong
+                        >
+                    </div>
                 </div>
                 {#if embedStatus}
                     <div class="alert alert-warning">
-                        This image requires {operationName(embedOperation())}, which is not available for the current plan or token balance. The embed action is disabled for this image.
+                        This image requires {operationName(embedOperation())},
+                        which is not available for the current plan or token
+                        balance. The embed action is disabled for this image.
                     </div>
                 {/if}
                 {#if embedAiStatus()}
@@ -533,8 +680,12 @@
                 <span>
                     Hidden text
                     {#if capacity?.imageOk}
-                        <small class:over={utf8ByteLength(watermarkText) > capacity.maxTextBytes}>
-                            {utf8ByteLength(watermarkText)} / {capacity.maxTextBytes} B
+                        <small
+                            class:over={utf8ByteLength(watermarkText) >
+                                capacity.maxTextBytes}
+                        >
+                            {utf8ByteLength(watermarkText)} / {capacity.maxTextBytes}
+                            B
                         </small>
                     {/if}
                 </span>
@@ -549,9 +700,12 @@
             <button
                 class="btn btn-primary"
                 onclick={embedWatermark}
-                disabled={embedProcessing || capacityChecking || (capacity !== null && !capacity.imageOk) || embedInputDisabled()}
+                disabled={embedProcessing ||
+                    capacityChecking ||
+                    (capacity !== null && !capacity.imageOk) ||
+                    embedInputDisabled()}
             >
-                {embedProcessing ? 'Processing...' : 'Generate watermarked PNG'}
+                {embedProcessing ? "Processing..." : "Generate watermarked PNG"}
             </button>
 
             {#if embedError}
@@ -564,7 +718,9 @@
                 <h2>Watermarked image</h2>
                 {#if classification}
                     <div class="notice">
-                        AI classification: <strong>{classification.category}</strong>
+                        AI classification: <strong
+                            >{classification.category}</strong
+                        >
                         {#if classification.categoryConfidence !== null}
                             ({classification.categoryConfidence}%)
                         {/if}
@@ -573,31 +729,49 @@
                         {/if}
                     </div>
                 {:else}
-                    <div class="notice">AI classification was skipped or unavailable.</div>
+                    <div class="notice">
+                        AI classification was skipped or unavailable.
+                    </div>
                 {/if}
                 <div class="image-frame">
                     <img src={resultImageUrl} alt="Watermarked output" />
                 </div>
-                <a href={resultImageUrl} download="watermarked_image.png" class="download-link">
+                <a
+                    href={resultImageUrl}
+                    download="watermarked_image.png"
+                    class="download-link"
+                >
                     <button class="btn btn-success">Download PNG</button>
                 </a>
             </section>
         {/if}
-    {:else if activeTab === 'detect'}
+    {:else if activeTab === "detect"}
         <section class="panel">
             <div class="panel-heading">
                 <h2>Detect watermark</h2>
-                <span class="cost">DETECT: {operationCost('DETECT')} token</span>
+                <span class="cost">DETECT: {operationCost("DETECT")} token</span
+                >
             </div>
-            {@render OperationGate('DETECT')}
+            {@render OperationGate("DETECT")}
             <label class="field">
                 <span>Image</span>
-                <input type="file" accept="image/png,image/jpeg" bind:files={detectFiles} disabled={!canUseOperation('DETECT')} />
+                <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    bind:files={detectFiles}
+                    disabled={!canUseOperation("DETECT")}
+                />
             </label>
-            <button class="btn btn-primary" onclick={detectWatermark} disabled={detectProcessing || !canUseOperation('DETECT')}>
-                {detectProcessing ? 'Checking...' : 'Detect'}
+            <button
+                class="btn btn-primary"
+                onclick={detectWatermark}
+                disabled={detectProcessing || !canUseOperation("DETECT")}
+            >
+                {detectProcessing ? "Checking..." : "Detect"}
             </button>
-            {#if detectError}<div class="alert alert-error">{detectError}</div>{/if}
+            {#if detectError}<div class="alert alert-error">
+                    {detectError}
+                </div>{/if}
         </section>
 
         {#if detectResult}
@@ -605,69 +779,218 @@
                 {#if detectResult.watermarked}
                     <div class="status yes">Watermark detected</div>
                     <div class="details">
-                        <div><span>Owner</span><strong>{detectResult.ownerIdentity}</strong></div>
-                        <div><span>Payload tier</span><strong>{detectResult.lengthBits ?? 'unknown'}</strong></div>
+                        <div>
+                            <span>Owner</span><strong
+                                >{detectResult.ownerIdentity}</strong
+                            >
+                        </div>
+                        <div>
+                            <span>Payload tier</span><strong
+                                >{detectResult.lengthBits ?? "unknown"}</strong
+                            >
+                        </div>
                     </div>
                 {:else}
                     <div class="status no">No watermark detected</div>
                 {/if}
             </section>
         {/if}
-    {:else if activeTab === 'extract'}
+    {:else if activeTab === "extract"}
         <section class="panel">
             <div class="panel-heading">
                 <h2>Extract hidden text</h2>
-                <span class="cost">EXTRACT: {operationCost('EXTRACT')} tokens</span>
+                <span class="cost"
+                    >EXTRACT: {operationCost("EXTRACT")} tokens</span
+                >
             </div>
-            {@render OperationGate('EXTRACT')}
+            {@render OperationGate("EXTRACT")}
             <label class="field">
                 <span>Watermarked image</span>
-                <input type="file" accept="image/png,image/jpeg" bind:files={extractFiles} disabled={!canUseOperation('EXTRACT')} />
+                <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    bind:files={extractFiles}
+                    disabled={!canUseOperation("EXTRACT")}
+                />
             </label>
-            <button class="btn btn-primary" onclick={extractWatermark} disabled={extractProcessing || !canUseOperation('EXTRACT')}>
-                {extractProcessing ? 'Reading...' : 'Extract'}
+            <button
+                class="btn btn-primary"
+                onclick={extractWatermark}
+                disabled={extractProcessing || !canUseOperation("EXTRACT")}
+            >
+                {extractProcessing ? "Reading..." : "Extract"}
             </button>
-            {#if extractNotice}<div class="alert alert-info">{extractNotice}</div>{/if}
-            {#if extractError}<div class="alert alert-error">{extractError}</div>{/if}
+            {#if extractNotice}<div class="alert alert-info">
+                    {extractNotice}
+                </div>{/if}
+            {#if extractError}<div class="alert alert-error">
+                    {extractError}
+                </div>{/if}
         </section>
 
         {#if extractResult}
             <section class="panel result-panel">
                 <h2>Hidden text</h2>
                 <div class="details">
-                    <div><span>Owner</span><strong>{extractResult.ownerIdentity}</strong></div>
+                    <div>
+                        <span>Owner</span><strong
+                            >{extractResult.ownerIdentity}</strong
+                        >
+                    </div>
                 </div>
                 <pre>{extractResult.text}</pre>
             </section>
         {/if}
-    {:else if activeTab === 'visualize'}
+    {:else if activeTab === "visualize"}
         <section class="panel">
             <div class="panel-heading">
                 <h2>Visualize watermark footprint</h2>
-                <span class="cost">VISUALIZE: {operationCost('VISUALIZE')} tokens</span>
+                <span class="cost"
+                    >VISUALIZE: {operationCost("VISUALIZE")} tokens</span
+                >
             </div>
-            {@render OperationGate('VISUALIZE')}
+            {@render OperationGate("VISUALIZE")}
             <label class="field">
                 <span>Image</span>
-                <input type="file" accept="image/png,image/jpeg" bind:files={visualizeFiles} disabled={!canUseOperation('VISUALIZE')} />
+                <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    bind:files={visualizeFiles}
+                    disabled={!canUseOperation("VISUALIZE")}
+                />
             </label>
-            <button class="btn btn-primary" onclick={visualizeWatermark} disabled={visualizeProcessing || !canUseOperation('VISUALIZE')}>
-                {visualizeProcessing ? 'Rendering...' : 'Visualize'}
+            <button
+                class="btn btn-primary"
+                onclick={visualizeWatermark}
+                disabled={visualizeProcessing || !canUseOperation("VISUALIZE")}
+            >
+                {visualizeProcessing ? "Rendering..." : "Visualize"}
             </button>
-            {#if visualizeError}<div class="alert alert-error">{visualizeError}</div>{/if}
+            {#if visualizeError}<div class="alert alert-error">
+                    {visualizeError}
+                </div>{/if}
         </section>
 
         {#if visualizeImageUrl}
             <section class="panel result-panel">
                 <h2>Visualization</h2>
                 <div class="image-frame">
-                    <img src={visualizeImageUrl} alt="Watermark visualization" />
+                    <img
+                        src={visualizeImageUrl}
+                        alt="Watermark visualization"
+                    />
                 </div>
-                <a href={visualizeImageUrl} download="watermark_visualization.png" class="download-link">
-                    <button class="btn btn-success">Download visualization</button>
+                <a
+                    href={visualizeImageUrl}
+                    download="watermark_visualization.png"
+                    class="download-link"
+                >
+                    <button class="btn btn-success"
+                        >Download visualization</button
+                    >
                 </a>
             </section>
         {/if}
+    {:else if activeTab === "pricing"}
+        <section class="panel">
+            <h2>Subscription plans</h2>
+            <div class="plans-grid">
+                {#each plans as plan}
+                    <div
+                        class="plan-card"
+                        class:current={subscription?.planCode === plan.code}
+                    >
+                        <h3>{plan.code}</h3>
+                        <p class="plan-tokens">
+                            <strong>{plan.monthlyTokens}</strong> tokens / month
+                        </p>
+                        <ul class="plan-ops">
+                            {#each plan.allowedOperations as op}
+                                <li>{operationName(op)}</li>
+                            {/each}
+                        </ul>
+                        {#if subscription?.planCode === plan.code}
+                            <button class="btn btn-outline" disabled
+                                >Current plan</button
+                            >
+                        {:else}
+                            <button
+                                class="btn btn-primary"
+                                onclick={() => initiatePayment(plan.code)}
+                                disabled={paymentProcessing}
+                            >
+                                Upgrade to {plan.code}
+                            </button>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
+
+            {#if paymentSession}
+                <div
+                    class="payment-session-status"
+                    class:pending={paymentSession.status === "PENDING"}
+                >
+                    <div class="panel">
+                        <h3>Mock Payment Session</h3>
+                        <p>
+                            Target Plan: <strong
+                                >{paymentSession.targetPlan}</strong
+                            >
+                        </p>
+                        <p>
+                            Status: <strong
+                                class="status-tag"
+                                class:status-pending={paymentSession.status ===
+                                    "PENDING"}>{paymentSession.status}</strong
+                            >
+                        </p>
+
+                        {#if paymentSession.status === "PENDING"}
+                            <div class="payment-actions">
+                                <button
+                                    class="btn btn-success"
+                                    onclick={() => completePayment("succeed")}
+                                    disabled={paymentProcessing}
+                                >
+                                    {paymentProcessing
+                                        ? "Processing..."
+                                        : "Simulate Success"}
+                                </button>
+                                <button
+                                    class="btn btn-error"
+                                    onclick={() => completePayment("fail")}
+                                    disabled={paymentProcessing}
+                                >
+                                    Simulate Failure
+                                </button>
+                                <button
+                                    class="btn btn-outline"
+                                    onclick={() => completePayment("cancel")}
+                                    disabled={paymentProcessing}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        {:else}
+                            <div class="notice">
+                                Session finished. You can now close this or
+                                start a new upgrade.
+                                <button
+                                    class="btn btn-outline compact"
+                                    onclick={() => (paymentSession = null)}
+                                    >Dismiss</button
+                                >
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+            {/if}
+
+            {#if paymentError}
+                <div class="alert alert-error">{paymentError}</div>
+            {/if}
+        </section>
     {/if}
 </main>
 
@@ -676,7 +999,9 @@
     {#if status}
         <div class="alert alert-warning">{status}</div>
     {:else}
-        <div class="notice">{operationName(operation)} is available for your plan.</div>
+        <div class="notice">
+            {operationName(operation)} is available for your plan.
+        </div>
     {/if}
 {/snippet}
 
@@ -685,7 +1010,12 @@
         margin: 0;
         background: #f3f5f7;
         color: #1f2933;
-        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family:
+            Inter,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
     }
 
     .container {
@@ -702,7 +1032,8 @@
         margin-bottom: 20px;
     }
 
-    h1, h2 {
+    h1,
+    h2 {
         margin: 0;
         color: #172033;
     }
@@ -728,7 +1059,9 @@
         margin-bottom: 18px;
     }
 
-    .metric, .panel, .tab {
+    .metric,
+    .panel,
+    .tab {
         background: #fff;
         border: 1px solid #d9e2ec;
         border-radius: 8px;
@@ -738,7 +1071,9 @@
         padding: 12px 14px;
     }
 
-    .metric span, .details span, .capacity-grid span {
+    .metric span,
+    .details span,
+    .capacity-grid span {
         display: block;
         color: #667085;
         font-size: 0.78rem;
@@ -821,7 +1156,8 @@
         gap: 12px;
     }
 
-    input[type="text"], input[type="file"] {
+    input[type="text"],
+    input[type="file"] {
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         background: #f8fafc;
@@ -849,7 +1185,8 @@
         cursor: pointer;
     }
 
-    .btn-primary, .btn-success {
+    .btn-primary,
+    .btn-success {
         width: 100%;
         color: #fff;
     }
@@ -878,7 +1215,8 @@
         cursor: not-allowed;
     }
 
-    .alert, .notice {
+    .alert,
+    .notice {
         border-radius: 8px;
         padding: 11px 13px;
         margin: 12px 0;
@@ -909,14 +1247,16 @@
         color: #1d4ed8;
     }
 
-    .capacity-grid, .details {
+    .capacity-grid,
+    .details {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 10px;
         margin-bottom: 12px;
     }
 
-    .capacity-grid div, .details div {
+    .capacity-grid div,
+    .details div {
         background: #f8fafc;
         border: 1px solid #e2e8f0;
         border-radius: 8px;
@@ -993,13 +1333,112 @@
         padding: 16px;
     }
 
+    .plans-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-top: 16px;
+    }
+
+    .plan-card {
+        border: 1px solid #d9e2ec;
+        border-radius: 8px;
+        padding: 20px;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+        transition:
+            transform 0.2s,
+            border-color 0.2s;
+    }
+
+    .plan-card.current {
+        border-color: #2563eb;
+        background: #eff6ff;
+        transform: scale(1.02);
+    }
+
+    .plan-card h3 {
+        margin: 0 0 10px;
+        font-size: 1.4rem;
+        color: #172033;
+    }
+
+    .plan-tokens {
+        font-size: 1.1rem;
+        margin-bottom: 16px;
+        color: #475467;
+    }
+
+    .plan-ops {
+        margin: 0 0 20px;
+        padding: 0;
+        list-style: none;
+        flex-grow: 1;
+    }
+
+    .plan-ops li {
+        padding: 4px 0;
+        font-size: 0.9rem;
+        color: #667085;
+    }
+
+    .plan-ops li::before {
+        content: "✓";
+        color: #16a34a;
+        margin-right: 8px;
+        font-weight: bold;
+    }
+
+    .payment-session-status {
+        margin-top: 24px;
+        border-top: 2px dashed #d9e2ec;
+        padding-top: 24px;
+    }
+
+    .payment-session-status.pending .panel {
+        border-color: #2563eb;
+        background: #f8fafc;
+    }
+
+    .payment-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 16px;
+    }
+
+    .btn-error {
+        background: #dc2626;
+        color: #fff;
+        width: 100%;
+    }
+
+    .status-tag {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background: #e2e8f0;
+        color: #475467;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+    }
+
+    .status-pending {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
     @media (max-width: 760px) {
-        .topbar, .panel-heading {
+        .topbar,
+        .panel-heading {
             flex-direction: column;
             align-items: stretch;
         }
 
-        .account-panel, .tabs, .capacity-grid, .details {
+        .account-panel,
+        .tabs,
+        .capacity-grid,
+        .details {
             grid-template-columns: 1fr;
         }
 
