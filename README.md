@@ -158,10 +158,18 @@ docker compose down -v
 | Auth Server | http://localhost:8081 |
 | Subscription Service | http://localhost:8085 |
 | Watermark Service Python/FastAPI | http://localhost:8082 |
-| Watermark Service Swagger | http://localhost:8082/docs |
 | AI Service | http://localhost:8084 |
 | SonarQube | http://localhost:9000 |
 | PostgreSQL host port | `localhost:5433` |
+
+## Dokumentacja API (OpenAPI)
+
+| Usluga | URL |
+|---|---|
+| Auth Server | http://localhost:8081/swagger-ui/index.html |
+| Subscription Service | http://localhost:8085/swagger-ui/index.html |
+| AI Service | http://localhost:8084/swagger-ui/index.html |
+| Watermark Service | http://localhost:8082/docs |
 
 ## Przydatne endpointy
 
