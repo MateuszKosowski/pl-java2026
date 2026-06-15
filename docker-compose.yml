@@ -217,6 +217,7 @@ services:
 
   sonar-scan:
     image: gradle:8.14.4-jdk21
+    user: root
     working_dir: /workspace
     profiles: ["tools"]
     env_file:
@@ -237,6 +238,7 @@ services:
     volumes:
       - ./:/workspace
       - gradle_cache:/home/gradle/.gradle
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - sonarqube
 
