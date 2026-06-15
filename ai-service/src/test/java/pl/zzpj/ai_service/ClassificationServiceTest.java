@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import pl.zzpj.ai_service.support.OnnxRuntimeAvailability;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +14,7 @@ import java.nio.file.Paths;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class ClassificationServiceTest {
 
@@ -20,6 +22,12 @@ class ClassificationServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // The ONNX Runtime native library does not initialize on every host/JDK
+        // combination (e.g. onnxruntime 1.21.1 under JDK 21 on this Windows box fails
+        // with "DLL initialization routine failed", while it works under JDK 25).
+        // Skip rather than hard-fail when the native runtime is unavailable.
+        assumeTrue(OnnxRuntimeAvailability.isAvailable(),
+                "ONNX Runtime native library could not initialize on this host/JDK");
         Path modelPath = Paths.get(getClass().getResource("/model/mobilenetv2.onnx").toURI());
         service = new ClassificationService();
         ReflectionTestUtils.setField(service, "modelPath", modelPath.toString());
@@ -28,7 +36,9 @@ class ClassificationServiceTest {
 
     @AfterEach
     void tearDown() {
-        service.close();
+        if (service != null) {
+            service.close();
+        }
     }
 
     @Test
