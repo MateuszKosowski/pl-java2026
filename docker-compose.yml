@@ -27,7 +27,15 @@ services:
     ports:
       - "8888:8888"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "-u", "${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}", "http://localhost:8888/auth-server/default" ]
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "-u",
+          "${CONFIG_SERVER_USER}:${CONFIG_SERVER_PASSWORD}",
+          "http://localhost:8888/auth-server/default",
+        ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -90,6 +98,8 @@ services:
       EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
       EUREKA_USER: ${EUREKA_USER}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+    ports:
+      - "8084:8084"
     depends_on:
       config-server:
         condition: service_healthy
