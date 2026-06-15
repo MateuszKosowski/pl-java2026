@@ -19,19 +19,31 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http)
+        throws Exception {
         http.csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                "/actuator/health",
-                                "/actuator/health/**",
-                                "/api/subscriptions/status",
-                                "/error"
-                        ).permitAll()
-                        .anyRequest().authenticated()
-                )
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+            .authorizeHttpRequests(auth ->
+                auth
+                    .requestMatchers(
+                        "/actuator/health",
+                        "/actuator/health/**",
+                        "/api/subscriptions/status",
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html",
+                        "/error"
+                    )
+                    .permitAll()
+                    .anyRequest()
+                    .authenticated()
+            )
+            .sessionManagement(session ->
+                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .addFilterBefore(
+                jwtFilter,
+                UsernamePasswordAuthenticationFilter.class
+            );
 
         return http.build();
     }

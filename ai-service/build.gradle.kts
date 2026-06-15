@@ -24,6 +24,7 @@ extra["springCloudVersion"] = "2025.0.1"
 dependencies {
         implementation("org.springframework.boot:spring-boot-starter-web")
         implementation("org.springframework.boot:spring-boot-starter-security")
+        implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5")
         implementation("org.springframework.cloud:spring-cloud-starter-config")
         implementation("org.springframework.cloud:spring-cloud-starter-netflix-eureka-client")
         implementation("org.springframework.cloud:spring-cloud-starter-openfeign")

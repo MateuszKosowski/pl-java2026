@@ -98,6 +98,8 @@ services:
       EUREKA_URL: http://${EUREKA_USER}:${EUREKA_PASSWORD}@eureka-server:8761/eureka/
       EUREKA_USER: ${EUREKA_USER}
       EUREKA_PASSWORD: ${EUREKA_PASSWORD}
+    ports:
+      - "8084:8084"
     depends_on:
       config-server:
         condition: service_healthy
