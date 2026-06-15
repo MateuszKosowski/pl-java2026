@@ -100,13 +100,7 @@ public class TokenReservationController {
             case Accepted(
                 TokenReservation reservation
             ) -> ResponseEntity.status(HttpStatus.CREATED).body(
-                TokenReservationResponse.from(
-                    TokenReservationEntity.from(
-                        reservation,
-                        Instant.now(),
-                        null // externalOperationId is not available here, but we are just returning a view
-                    )
-                )
+                TokenReservationResponse.from(reservation)
             );
             case RejectedInsufficientTokens rejected -> ResponseEntity.status(
                 HttpStatus.CONFLICT
