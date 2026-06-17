@@ -1,0 +1,990 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "StegoCloud Combined API",
+    "version": "1.0.0",
+    "description": "Combined OpenAPI documentation for all StegoCloud services."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8081",
+      "description": "Auth Server"
+    },
+    {
+      "url": "http://localhost:8085",
+      "description": "Subscription Service"
+    },
+    {
+      "url": "http://localhost:8084",
+      "description": "AI Service"
+    },
+    {
+      "url": "http://localhost:8082",
+      "description": "Watermark Service"
+    }
+  ],
+  "paths": {
+    "/auth/auth/validate": {
+      "post": {
+        "tags": [
+          "auth: Authentication"
+        ],
+        "summary": "Validate token",
+        "description": "Validates the provided JWT token.",
+        "operationId": "validateToken",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/auth/register": {
+      "post": {
+        "tags": [
+          "auth: Authentication"
+        ],
+        "summary": "Register user",
+        "description": "Creates a new user account with the provided details.",
+        "operationId": "register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/auth_RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/auth_RegisterResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/auth/login": {
+      "post": {
+        "tags": [
+          "auth: Authentication"
+        ],
+        "summary": "Login user",
+        "description": "Authenticates a user and returns a JWT token.",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/auth_LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscription/api/payments/mock/sessions": {
+      "post": {
+        "tags": [
+          "subscription: mock-payment-controller"
+        ],
+        "operationId": "createSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/subscription_CreatePaymentSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/subscription_PaymentSessionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscription/api/payments/mock/sessions/{sessionId}/succeed": {
+      "post": {
+        "tags": [
+          "subscription: mock-payment-controller"
+        ],
+        "operationId": "succeed",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/subscription_PaymentSessionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscription/api/payments/mock/sessions/{sessionId}/fail": {
+      "post": {
+        "tags": [
+          "subscription: mock-payment-controller"
+        ],
+        "operationId": "fail",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/subscription_PaymentSessionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscription/api/payments/mock/sessions/{sessionId}/cancel": {
+      "post": {
+        "tags": [
+          "subscription: mock-payment-controller"
+        ],
+        "operationId": "cancel",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/subscription_PaymentSessionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscription/api/subscriptions/status": {
+      "get": {
+        "tags": [
+          "subscription: Subscription Status"
+        ],
+        "summary": "Service status",
+        "description": "Returns the current status of the subscription service.",
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/subscription_ServiceStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscription/api/subscriptions/plans": {
+      "get": {
+        "tags": [
+          "subscription: Subscription Query"
+        ],
+        "summary": "List available plans",
+        "description": "Returns a list of all available subscription plans.",
+        "operationId": "plans",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/subscription_PlanView"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscription/api/subscriptions/me": {
+      "get": {
+        "tags": [
+          "subscription: Subscription Query"
+        ],
+        "summary": "Current subscription",
+        "description": "Returns details of the current user's active subscription.",
+        "operationId": "currentSubscription",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/subscription_CurrentSubscriptionView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscription/api/subscriptions/me/tokens": {
+      "get": {
+        "tags": [
+          "subscription: Subscription Query"
+        ],
+        "summary": "Token balance",
+        "description": "Returns the remaining token balance for the current user.",
+        "operationId": "tokenBalance",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/subscription_TokenBalanceView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/api/classify": {
+      "post": {
+        "tags": [
+          "ai: Classification"
+        ],
+        "summary": "Classify image",
+        "description": "Uses an ONNX model to classify the content of the provided image file.",
+        "operationId": "classify",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ai_ClassificationResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/watermark/api/watermark/embed": {
+      "post": {
+        "tags": [
+          "watermark: Watermark"
+        ],
+        "summary": "Embed watermark",
+        "description": "Embeds a text watermark into a PNG image using the owner's identity.",
+        "operationId": "embed_api_watermark_embed_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/watermark_Body_embed_api_watermark_embed_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/watermark/api/watermark/detect": {
+      "post": {
+        "tags": [
+          "watermark: Watermark"
+        ],
+        "summary": "Detect watermark",
+        "description": "Checks if a PNG image contains a watermark and returns the owner identity if found.",
+        "operationId": "detect_api_watermark_detect_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/watermark_Body_detect_api_watermark_detect_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/watermark/api/watermark/extract": {
+      "post": {
+        "tags": [
+          "watermark: Watermark"
+        ],
+        "summary": "Extract watermark text",
+        "description": "Extracts the hidden text from a watermarked PNG image. Requires owner or admin permissions.",
+        "operationId": "extract_api_watermark_extract_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/watermark_Body_extract_api_watermark_extract_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/watermark/api/watermark/visualize": {
+      "post": {
+        "tags": [
+          "watermark: Watermark"
+        ],
+        "summary": "Visualize watermark",
+        "description": "Generates a heatmap showing the watermark distribution in the PNG image.",
+        "operationId": "visualize_endpoint_api_watermark_visualize_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/watermark_Body_visualize_endpoint_api_watermark_visualize_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/watermark/api/watermark/capacity": {
+      "post": {
+        "tags": [
+          "watermark: Watermark"
+        ],
+        "summary": "Check watermark capacity",
+        "description": "Calculates the maximum text size that can be embedded into the provided image.",
+        "operationId": "capacity_api_watermark_capacity_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/watermark_Body_capacity_api_watermark_capacity_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/watermark/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "auth_RegisterRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 3
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "username"
+        ]
+      },
+      "auth_RegisterResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "USER"
+            ]
+          }
+        }
+      },
+      "auth_LoginRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "subscription_CreatePaymentSessionRequest": {
+        "type": "object",
+        "properties": {
+          "targetPlan": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "STANDARD",
+              "PRO"
+            ]
+          }
+        }
+      },
+      "subscription_PaymentSessionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "targetPlan": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "STANDARD",
+              "PRO"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "SUCCEEDED",
+              "FAILED",
+              "CANCELLED"
+            ]
+          }
+        }
+      },
+      "subscription_ServiceStatus": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "subscription_PlanView": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "STANDARD",
+              "PRO"
+            ]
+          },
+          "monthlyTokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "allowedOperations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "CAPACITY_CHECK",
+                "DETECT",
+                "EXTRACT",
+                "VISUALIZE",
+                "EMBED_768",
+                "EMBED_1024",
+                "AI_CLASSIFICATION"
+              ]
+            },
+            "uniqueItems": true
+          }
+        }
+      },
+      "subscription_CurrentSubscriptionView": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "planCode": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "STANDARD",
+              "PRO"
+            ]
+          },
+          "activeFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "activeUntil": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "subscription_TokenBalanceView": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "availableTokens": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reservedTokens": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ai_ClassificationResult": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          },
+          "categoryConfidence": {
+            "type": "number",
+            "format": "double"
+          },
+          "top3": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ai_TopPrediction"
+            }
+          }
+        }
+      },
+      "ai_TopPrediction": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "watermark_Body_capacity_api_watermark_capacity_post": {
+        "properties": {
+          "image": {
+            "type": "string",
+            "format": "binary",
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image"
+        ],
+        "title": "Body_capacity_api_watermark_capacity_post"
+      },
+      "watermark_Body_detect_api_watermark_detect_post": {
+        "properties": {
+          "image": {
+            "type": "string",
+            "format": "binary",
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image"
+        ],
+        "title": "Body_detect_api_watermark_detect_post"
+      },
+      "watermark_Body_embed_api_watermark_embed_post": {
+        "properties": {
+          "image": {
+            "type": "string",
+            "format": "binary",
+            "title": "Image"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image",
+          "text"
+        ],
+        "title": "Body_embed_api_watermark_embed_post"
+      },
+      "watermark_Body_extract_api_watermark_extract_post": {
+        "properties": {
+          "image": {
+            "type": "string",
+            "format": "binary",
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image"
+        ],
+        "title": "Body_extract_api_watermark_extract_post"
+      },
+      "watermark_Body_visualize_endpoint_api_watermark_visualize_post": {
+        "properties": {
+          "image": {
+            "type": "string",
+            "format": "binary",
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image"
+        ],
+        "title": "Body_visualize_endpoint_api_watermark_visualize_post"
+      },
+      "watermark_HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/watermark_ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "watermark_ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "auth: Authentication",
+      "description": "Authentication and registration API"
+    },
+    {
+      "name": "subscription: Subscription Query",
+      "description": "API for querying user subscriptions and plans"
+    },
+    {
+      "name": "subscription: Subscription Status",
+      "description": "Service health and status API"
+    },
+    {
+      "name": "ai: Classification",
+      "description": "AI Image Classification API"
+    }
+  ]
+}
