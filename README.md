@@ -1,5 +1,20 @@
 # StegoCloud
 
+## Spis treści
+- [Członkowie grupy](#czlonkowie-grupy)
+- [Opis projektu](#opis-projektu)
+- [Architektura](#architektura)
+- [Główne zasady biznesowe](#glowne-zasady-biznesowe)
+- [Mechanizmy Javy 21](#mechanizmy-javy-21)
+- [Konta demo](#konta-demo)
+- [Konfiguracja](#konfiguracja)
+- [Uruchomienie](#uruchomienie)
+- [Linki](#linki)
+- [Dokumentacja API (OpenAPI)](#dokumentacja-api-openapi)
+- [Przydatne endpointy](#przydatne-endpointy)
+- [SonarQube](#sonarqube)
+- [Uwagi techniczne](#uwagi-techniczne)
+
 ## Czlonkowie grupy
 
 251558, 251554, 251598, 251620, 251606, 247774
@@ -164,6 +179,18 @@ docker compose down -v
 
 ## Dokumentacja API (OpenAPI)
 
+### Skonsolidowana dokumentacja
+W głównym katalogu znajduje się plik `stegocloud-openapi.json` (połączone API wszystkich serwisów) oraz `api-docs.html` (interaktywny viewer).
+
+Ze względu na zabezpieczenia przeglądarek (CORS), plik `api-docs.html` musi być uruchomiony przez serwer HTTP.
+
+**Szybkie uruchomienie (Python):**
+```bash
+python3 -m http.server 8000
+```
+Następnie otwórz: [http://localhost:8000/api-docs.html](http://localhost:8000/api-docs.html)
+
+### Dokumentacja poszczególnych serwisów
 | Usluga | URL |
 |---|---|
 | Auth Server | http://localhost:8081/swagger-ui/index.html |
