@@ -20,6 +20,7 @@ import pl.zzpj.subscription_service.domain.token.decision.Accepted;
 import pl.zzpj.subscription_service.domain.token.decision.RejectedInsufficientTokens;
 import pl.zzpj.subscription_service.domain.token.decision.RejectedOperationNotAllowed;
 import pl.zzpj.subscription_service.domain.token.decision.RejectedPlanNotFound;
+import pl.zzpj.subscription_service.domain.token.decision.RejectedSubscriptionExpired;
 import pl.zzpj.subscription_service.domain.token.decision.TokenDecision;
 import pl.zzpj.subscription_service.persistence.entity.TokenReservationEntity;
 
@@ -84,6 +85,9 @@ public class TokenReservationController {
       case RejectedPlanNotFound rejected ->
           ResponseEntity.status(HttpStatus.CONFLICT)
               .body(TokenReservationErrorResponse.from("PLAN_NOT_FOUND", rejected));
+      case RejectedSubscriptionExpired rejected ->
+          ResponseEntity.status(HttpStatus.CONFLICT)
+              .body(TokenReservationErrorResponse.from("SUBSCRIPTION_EXPIRED", rejected));
     };
   }
 }

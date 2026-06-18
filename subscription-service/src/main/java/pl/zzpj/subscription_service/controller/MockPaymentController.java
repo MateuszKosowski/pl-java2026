@@ -32,24 +32,28 @@ public class MockPaymentController {
   }
 
   @PostMapping("/{sessionId}/succeed")
-  public PaymentSessionResponse succeed(@PathVariable UUID sessionId) {
+  public PaymentSessionResponse succeed(@PathVariable UUID sessionId, Principal principal) {
+    String userId = userIdentityResolver.resolve(principal);
     PaymentSession session =
         paymentService.completePayment(
-            sessionId, new PaymentOutcome.Succeeded(UUID.randomUUID().toString()));
+            userId, sessionId, new PaymentOutcome.Succeeded(UUID.randomUUID().toString()));
     return PaymentSessionResponse.from(session);
   }
 
   @PostMapping("/{sessionId}/fail")
-  public PaymentSessionResponse fail(@PathVariable UUID sessionId) {
+  public PaymentSessionResponse fail(@PathVariable UUID sessionId, Principal principal) {
+    String userId = userIdentityResolver.resolve(principal);
     PaymentSession session =
-        paymentService.completePayment(sessionId, new PaymentOutcome.Failed("Mocked failure"));
+        paymentService.completePayment(
+            userId, sessionId, new PaymentOutcome.Failed("Mocked failure"));
     return PaymentSessionResponse.from(session);
   }
 
   @PostMapping("/{sessionId}/cancel")
-  public PaymentSessionResponse cancel(@PathVariable UUID sessionId) {
+  public PaymentSessionResponse cancel(@PathVariable UUID sessionId, Principal principal) {
+    String userId = userIdentityResolver.resolve(principal);
     PaymentSession session =
-        paymentService.completePayment(sessionId, new PaymentOutcome.Cancelled());
+        paymentService.completePayment(userId, sessionId, new PaymentOutcome.Cancelled());
     return PaymentSessionResponse.from(session);
   }
 }

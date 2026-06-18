@@ -12,17 +12,15 @@ import pl.zzpj.subscription_service.domain.token.TokenReservationPolicy;
 import pl.zzpj.subscription_service.domain.token.decision.Accepted;
 import pl.zzpj.subscription_service.domain.token.decision.TokenDecision;
 import pl.zzpj.subscription_service.domain.token.reservation.TokenReservationStatus;
-import pl.zzpj.subscription_service.persistence.entity.ActiveSubscriptionEntity;
 import pl.zzpj.subscription_service.persistence.entity.TokenBalanceEntity;
 import pl.zzpj.subscription_service.persistence.entity.TokenReservationEntity;
-import pl.zzpj.subscription_service.persistence.repository.ActiveSubscriptionRepository;
 import pl.zzpj.subscription_service.persistence.repository.TokenBalanceRepository;
 import pl.zzpj.subscription_service.persistence.repository.TokenReservationRepository;
 
 @Service
 public class TokenReservationCommandService {
 
-  private final ActiveSubscriptionRepository subscriptionRepository;
+  private final SubscriptionQueryService subscriptionQueryService;
   private final TokenBalanceRepository tokenBalanceRepository;
   private final TokenReservationRepository tokenReservationRepository;
   private final TokenReservationPolicy reservationPolicy;
@@ -32,12 +30,12 @@ public class TokenReservationCommandService {
       "Token balance not found for authenticated user ";
 
   public TokenReservationCommandService(
-      ActiveSubscriptionRepository subscriptionRepository,
+      SubscriptionQueryService subscriptionQueryService,
       TokenBalanceRepository tokenBalanceRepository,
       TokenReservationRepository tokenReservationRepository,
       TokenReservationPolicy reservationPolicy,
       Clock clock) {
-    this.subscriptionRepository = subscriptionRepository;
+    this.subscriptionQueryService = subscriptionQueryService;
     this.tokenBalanceRepository = tokenBalanceRepository;
     this.tokenReservationRepository = tokenReservationRepository;
     this.reservationPolicy = reservationPolicy;
@@ -46,19 +44,9 @@ public class TokenReservationCommandService {
 
   @Transactional
   public TokenDecision reserve(String userId, CreateTokenReservationCommand command) {
-    ActiveSubscription subscription =
-        subscriptionRepository
-            .findById(userId)
-            .map(ActiveSubscriptionEntity::toDomain)
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "Subscription not found for authenticated user " + userId));
-    TokenBalance tokenBalance =
-        tokenBalanceRepository
-            .findById(userId)
-            .map(TokenBalanceEntity::toDomain)
-            .orElseThrow(() -> new IllegalStateException(TOKEN_BALANCE_NOT_FOUND_ERROR + userId));
+    UserSubscriptionState state = subscriptionQueryService.stateFor(userId);
+    ActiveSubscription subscription = state.subscription();
+    TokenBalance tokenBalance = state.tokenBalance();
 
     Instant now = clock.instant();
     TokenDecision decision =
@@ -86,7 +74,9 @@ public class TokenReservationCommandService {
     TokenBalance updatedBalance = tokenBalance.consumeReserved(reservation.getTokens());
     tokenBalanceRepository.save(TokenBalanceEntity.from(updatedBalance));
     reservation.markConsumed(clock.instant());
-    return tokenReservationRepository.save(reservation);
+    TokenReservationEntity savedReservation = tokenReservationRepository.save(reservation);
+    subscriptionQueryService.stateFor(userId);
+    return savedReservation;
   }
 
   @Transactional
@@ -103,7 +93,9 @@ public class TokenReservationCommandService {
     TokenBalance updatedBalance = tokenBalance.releaseReserved(reservation.getTokens());
     tokenBalanceRepository.save(TokenBalanceEntity.from(updatedBalance));
     reservation.markReleased(clock.instant());
-    return tokenReservationRepository.save(reservation);
+    TokenReservationEntity savedReservation = tokenReservationRepository.save(reservation);
+    subscriptionQueryService.stateFor(userId);
+    return savedReservation;
   }
 
   private TokenReservationEntity findOwnedReservation(String userId, UUID reservationId) {

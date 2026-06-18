@@ -13,4 +13,9 @@ public record ActiveSubscription(
     Objects.requireNonNull(planCode, "planCode must not be null");
     Objects.requireNonNull(activeFrom, "activeFrom must not be null");
   }
+
+  public boolean isExpiredAt(Instant instant) {
+    Objects.requireNonNull(instant, "instant must not be null");
+    return activeUntil != null && !activeUntil.isAfter(instant);
+  }
 }

@@ -25,17 +25,15 @@ import pl.zzpj.subscription_service.domain.token.decision.Accepted;
 import pl.zzpj.subscription_service.domain.token.decision.RejectedInsufficientTokens;
 import pl.zzpj.subscription_service.domain.token.decision.TokenDecision;
 import pl.zzpj.subscription_service.domain.token.reservation.TokenReservationStatus;
-import pl.zzpj.subscription_service.persistence.entity.ActiveSubscriptionEntity;
 import pl.zzpj.subscription_service.persistence.entity.TokenBalanceEntity;
 import pl.zzpj.subscription_service.persistence.entity.TokenReservationEntity;
-import pl.zzpj.subscription_service.persistence.repository.ActiveSubscriptionRepository;
 import pl.zzpj.subscription_service.persistence.repository.TokenBalanceRepository;
 import pl.zzpj.subscription_service.persistence.repository.TokenReservationRepository;
 
 @ExtendWith(MockitoExtension.class)
 class TokenReservationCommandServiceTest {
 
-  @Mock private ActiveSubscriptionRepository subscriptionRepository;
+  @Mock private SubscriptionQueryService subscriptionQueryService;
 
   @Mock private TokenBalanceRepository tokenBalanceRepository;
 
@@ -52,7 +50,7 @@ class TokenReservationCommandServiceTest {
   void setUp() {
     service =
         new TokenReservationCommandService(
-            subscriptionRepository,
+            subscriptionQueryService,
             tokenBalanceRepository,
             tokenReservationRepository,
             reservationPolicy,
@@ -68,10 +66,8 @@ class TokenReservationCommandServiceTest {
     ActiveSubscription sub = new ActiveSubscription(userId, PlanCode.FREE, fixedInstant, null);
     TokenBalance balance = new TokenBalance(userId, 100, 0);
 
-    when(subscriptionRepository.findById(userId))
-        .thenReturn(Optional.of(ActiveSubscriptionEntity.from(sub)));
-    when(tokenBalanceRepository.findById(userId))
-        .thenReturn(Optional.of(TokenBalanceEntity.from(balance)));
+    when(subscriptionQueryService.stateFor(userId))
+        .thenReturn(new UserSubscriptionState(sub, balance));
 
     TokenReservation reservation =
         new TokenReservation(
@@ -96,10 +92,8 @@ class TokenReservationCommandServiceTest {
     ActiveSubscription sub = new ActiveSubscription(userId, PlanCode.FREE, fixedInstant, null);
     TokenBalance balance = new TokenBalance(userId, 0, 0);
 
-    when(subscriptionRepository.findById(userId))
-        .thenReturn(Optional.of(ActiveSubscriptionEntity.from(sub)));
-    when(tokenBalanceRepository.findById(userId))
-        .thenReturn(Optional.of(TokenBalanceEntity.from(balance)));
+    when(subscriptionQueryService.stateFor(userId))
+        .thenReturn(new UserSubscriptionState(sub, balance));
 
     TokenDecision decision = new RejectedInsufficientTokens(TokenOperation.DETECT, 1, 0);
     when(reservationPolicy.decide(any(), any(), eq(TokenOperation.DETECT), eq(fixedInstant)))

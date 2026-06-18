@@ -8,5 +8,5 @@ public interface PaymentProvider {
 
   PaymentSession getSession(UUID sessionId);
 
-  PaymentSession completeSession(UUID sessionId, PaymentOutcome outcome);
+  PaymentCompletion completeSession(UUID sessionId, String userId, PaymentOutcome outcome);
 }

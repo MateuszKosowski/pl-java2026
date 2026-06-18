@@ -3,6 +3,7 @@ package pl.zzpj.subscription_service.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
@@ -70,5 +71,51 @@ class SubscriptionQueryServiceTest {
     UserSubscriptionState actualState = subscriptionQueryService.stateFor(userId);
 
     assertEquals(expectedState, actualState);
+  }
+
+  @Test
+  void shouldResetExpiredPaidPlanToFreeWhenReservationsAreSettled() {
+    String userId = "user123";
+    SubscriptionPlan free = new SubscriptionPlan(PlanCode.FREE, 50, Set.of());
+    when(subscriptionCatalog.findPlan(PlanCode.FREE)).thenReturn(Optional.of(free));
+
+    UserSubscriptionState expiredState =
+        new UserSubscriptionState(
+            new ActiveSubscription(
+                userId,
+                PlanCode.PRO,
+                fixedInstant.minusSeconds(2_000_000),
+                fixedInstant.minusSeconds(1)),
+            new TokenBalance(userId, 1234, 0));
+    when(subscriptionStore.getOrCreate(eq(userId), any())).thenReturn(expiredState);
+    when(subscriptionStore.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    UserSubscriptionState actualState = subscriptionQueryService.stateFor(userId);
+
+    assertEquals(PlanCode.FREE, actualState.subscription().planCode());
+    assertEquals(50, actualState.tokenBalance().availableTokens());
+    assertEquals(0, actualState.tokenBalance().reservedTokens());
+    verify(subscriptionStore).save(actualState);
+  }
+
+  @Test
+  void shouldWaitForReservedTokensBeforeResettingExpiredPlan() {
+    String userId = "user123";
+    SubscriptionPlan free = new SubscriptionPlan(PlanCode.FREE, 50, Set.of());
+    when(subscriptionCatalog.findPlan(PlanCode.FREE)).thenReturn(Optional.of(free));
+
+    UserSubscriptionState expiredState =
+        new UserSubscriptionState(
+            new ActiveSubscription(
+                userId,
+                PlanCode.PRO,
+                fixedInstant.minusSeconds(2_000_000),
+                fixedInstant.minusSeconds(1)),
+            new TokenBalance(userId, 1234, 3));
+    when(subscriptionStore.getOrCreate(eq(userId), any())).thenReturn(expiredState);
+
+    UserSubscriptionState actualState = subscriptionQueryService.stateFor(userId);
+
+    assertEquals(expiredState, actualState);
   }
 }

@@ -2,6 +2,7 @@ package pl.zzpj.subscription_service.infrastructure.payment;
 
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import pl.zzpj.subscription_service.domain.payment.PaymentCompletion;
 import pl.zzpj.subscription_service.domain.payment.PaymentOutcome;
 import pl.zzpj.subscription_service.domain.payment.PaymentProvider;
 import pl.zzpj.subscription_service.domain.payment.PaymentSession;
@@ -34,10 +35,20 @@ public class MockPaymentProvider implements PaymentProvider {
   }
 
   @Override
-  public PaymentSession completeSession(UUID sessionId, PaymentOutcome outcome) {
-    PaymentSession session = getSession(sessionId);
+  public PaymentCompletion completeSession(UUID sessionId, String userId, PaymentOutcome outcome) {
+    PaymentSession session =
+        repository
+            .findByIdForUpdate(sessionId)
+            .map(PaymentSessionEntity::toDomain)
+            .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+    if (!session.userId().equals(userId)) {
+      throw new IllegalArgumentException("Payment session belongs to another user");
+    }
     if (session.status() != PaymentSession.Status.PENDING) {
-      throw new IllegalStateException("Session already completed: " + sessionId);
+      if (session.status() == statusFor(outcome)) {
+        return new PaymentCompletion(session, false);
+      }
+      throw new IllegalStateException("Session already completed with status " + session.status());
     }
 
     PaymentSession updatedSession =
@@ -48,6 +59,14 @@ public class MockPaymentProvider implements PaymentProvider {
         };
 
     repository.save(PaymentSessionEntity.from(updatedSession));
-    return updatedSession;
+    return new PaymentCompletion(updatedSession, true);
+  }
+
+  private PaymentSession.Status statusFor(PaymentOutcome outcome) {
+    return switch (outcome) {
+      case PaymentOutcome.Succeeded succeeded -> PaymentSession.Status.SUCCEEDED;
+      case PaymentOutcome.Failed failed -> PaymentSession.Status.FAILED;
+      case PaymentOutcome.Cancelled cancelled -> PaymentSession.Status.CANCELLED;
+    };
   }
 }

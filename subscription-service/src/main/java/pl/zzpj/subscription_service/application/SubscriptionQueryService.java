@@ -47,6 +47,22 @@ public class SubscriptionQueryService {
             new ActiveSubscription(userId, defaultPlan.code(), clock.instant(), null),
             new TokenBalance(userId, defaultPlan.monthlyTokens(), 0));
 
-    return subscriptionStore.getOrCreate(userId, initialState);
+    UserSubscriptionState state = subscriptionStore.getOrCreate(userId, initialState);
+    return expirePaidPlanIfEligible(state, defaultPlan);
+  }
+
+  private UserSubscriptionState expirePaidPlanIfEligible(
+      UserSubscriptionState state, SubscriptionPlan defaultPlan) {
+    if (!state.subscription().isExpiredAt(clock.instant())
+        || state.tokenBalance().reservedTokens() > 0) {
+      return state;
+    }
+
+    UserSubscriptionState freeState =
+        new UserSubscriptionState(
+            new ActiveSubscription(
+                state.subscription().userId(), defaultPlan.code(), clock.instant(), null),
+            new TokenBalance(state.tokenBalance().userId(), defaultPlan.monthlyTokens(), 0));
+    return subscriptionStore.save(freeState);
   }
 }

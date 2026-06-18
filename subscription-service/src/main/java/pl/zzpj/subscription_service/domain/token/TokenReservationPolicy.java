@@ -12,6 +12,7 @@ import pl.zzpj.subscription_service.domain.token.decision.Accepted;
 import pl.zzpj.subscription_service.domain.token.decision.RejectedInsufficientTokens;
 import pl.zzpj.subscription_service.domain.token.decision.RejectedOperationNotAllowed;
 import pl.zzpj.subscription_service.domain.token.decision.RejectedPlanNotFound;
+import pl.zzpj.subscription_service.domain.token.decision.RejectedSubscriptionExpired;
 import pl.zzpj.subscription_service.domain.token.decision.TokenDecision;
 
 public class TokenReservationPolicy {
@@ -46,6 +47,10 @@ public class TokenReservationPolicy {
     Objects.requireNonNull(balance, "balance must not be null");
     Objects.requireNonNull(operation, "operation must not be null");
     Objects.requireNonNull(now, "now must not be null");
+
+    if (subscription.isExpiredAt(now)) {
+      return new RejectedSubscriptionExpired(subscription.activeUntil());
+    }
 
     return subscriptionCatalog
         .findPlan(subscription.planCode())
