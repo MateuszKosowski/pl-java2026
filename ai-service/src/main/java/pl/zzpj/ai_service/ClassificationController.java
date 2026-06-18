@@ -21,31 +21,21 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "Classification", description = "AI Image Classification API")
 public class ClassificationController {
 
-    private final ClassificationService classificationService;
+  private final ClassificationService classificationService;
 
-    @PostMapping(
-        value = "/classify",
-        consumes = MediaType.MULTIPART_FORM_DATA_VALUE
-    )
-    @Operation(
-        summary = "Classify image",
-        description = "Uses an ONNX model to classify the content of the provided image file."
-    )
-    public ResponseEntity<ClassificationResult> classify(
-        @RequestPart("file") MultipartFile file
-    ) throws IOException, OrtException {
-        log.info(
-            "Classifying image: {}, size: {} bytes",
-            file.getOriginalFilename(),
-            file.getSize()
-        );
-        ClassificationResult result = classificationService.classify(file);
-        log.info(
-            "Result: category={}, label={}, confidence={}",
-            result.category(),
-            result.label(),
-            result.confidence()
-        );
-        return ResponseEntity.ok(result);
-    }
+  @PostMapping(value = "/classify", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @Operation(
+      summary = "Classify image",
+      description = "Uses an ONNX model to classify the content of the provided image file.")
+  public ResponseEntity<ClassificationResult> classify(@RequestPart("file") MultipartFile file)
+      throws IOException, OrtException {
+    log.info("Classifying image: {}, size: {} bytes", file.getOriginalFilename(), file.getSize());
+    ClassificationResult result = classificationService.classify(file);
+    log.info(
+        "Result: category={}, label={}, confidence={}",
+        result.category(),
+        result.label(),
+        result.confidence());
+    return ResponseEntity.ok(result);
+  }
 }

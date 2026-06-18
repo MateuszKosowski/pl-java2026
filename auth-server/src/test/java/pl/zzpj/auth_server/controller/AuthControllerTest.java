@@ -24,54 +24,37 @@ import pl.zzpj.auth_server.service.RegistrationService;
 @AutoConfigureMockMvc(addFilters = false)
 class AuthControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+  @Autowired private MockMvc mockMvc;
 
-    @MockitoBean
-    private UserRepository userRepository;
+  @MockitoBean private UserRepository userRepository;
 
-    @MockitoBean
-    private BCryptPasswordEncoder passwordEncoder;
+  @MockitoBean private BCryptPasswordEncoder passwordEncoder;
 
-    @MockitoBean
-    private JwtService jwtService;
+  @MockitoBean private JwtService jwtService;
 
-    @MockitoBean
-    private RegistrationService registrationService;
+  @MockitoBean private RegistrationService registrationService;
 
-    @Test
-    void shouldRegisterUser() throws Exception {
-        RegisterResponse response = new RegisterResponse(
-            1L,
-            "user",
-            "email@test.com",
-            UserRole.USER
-        );
-        when(
-            registrationService.register(any(RegisterRequest.class))
-        ).thenReturn(response);
+  @Test
+  void shouldRegisterUser() throws Exception {
+    RegisterResponse response = new RegisterResponse(1L, "user", "email@test.com", UserRole.USER);
+    when(registrationService.register(any(RegisterRequest.class))).thenReturn(response);
 
-        mockMvc
-            .perform(
-                post("/auth/register")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        "{\"username\":\"user\",\"email\":\"email@test.com\",\"password\":\"password\"}"
-                    )
-            )
-            .andExpect(status().isCreated());
-    }
+    mockMvc
+        .perform(
+            post("/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"username\":\"user\",\"email\":\"email@test.com\",\"password\":\"password\"}"))
+        .andExpect(status().isCreated());
+  }
 
-    @Test
-    void shouldFailValidationOnRegister() throws Exception {
-        mockMvc
-            .perform(
-                post("/auth/register")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        "{\"username\":\"\",\"email\":\"invalid-email\",\"password\":\"\"}"
-                    )
-            )
-            .andExpect(status().isBadRequest());
-    }
+  @Test
+  void shouldFailValidationOnRegister() throws Exception {
+    mockMvc
+        .perform(
+            post("/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"\",\"email\":\"invalid-email\",\"password\":\"\"}"))
+        .andExpect(status().isBadRequest());
+  }
 }

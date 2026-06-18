@@ -17,81 +17,60 @@ import pl.zzpj.subscription_service.persistence.SubscriptionStore;
 @Service
 public class PaymentApplicationService {
 
-    private final PaymentProvider paymentProvider;
-    private final SubscriptionStore subscriptionStore;
-    private final SubscriptionCatalog subscriptionCatalog;
-    private final SubscriptionQueryService subscriptionQueryService;
+  private final PaymentProvider paymentProvider;
+  private final SubscriptionStore subscriptionStore;
+  private final SubscriptionCatalog subscriptionCatalog;
+  private final SubscriptionQueryService subscriptionQueryService;
 
-    public PaymentApplicationService(
-        PaymentProvider paymentProvider,
-        SubscriptionStore subscriptionStore,
-        SubscriptionCatalog subscriptionCatalog,
-        SubscriptionQueryService subscriptionQueryService
-    ) {
-        this.paymentProvider = paymentProvider;
-        this.subscriptionStore = subscriptionStore;
-        this.subscriptionCatalog = subscriptionCatalog;
-        this.subscriptionQueryService = subscriptionQueryService;
+  public PaymentApplicationService(
+      PaymentProvider paymentProvider,
+      SubscriptionStore subscriptionStore,
+      SubscriptionCatalog subscriptionCatalog,
+      SubscriptionQueryService subscriptionQueryService) {
+    this.paymentProvider = paymentProvider;
+    this.subscriptionStore = subscriptionStore;
+    this.subscriptionCatalog = subscriptionCatalog;
+    this.subscriptionQueryService = subscriptionQueryService;
+  }
+
+  @Transactional
+  public PaymentSession initiatePayment(String userId, PlanCode targetPlan) {
+    return paymentProvider.createSession(userId, targetPlan);
+  }
+
+  @Transactional
+  public PaymentSession completePayment(UUID sessionId, PaymentOutcome outcome) {
+    PaymentSession session = paymentProvider.completeSession(sessionId, outcome);
+
+    switch (outcome) {
+      case PaymentOutcome.Succeeded succeeded -> applyPaymentSuccess(session);
+      case PaymentOutcome.Failed failed -> {
+        /* No-op */
+      }
+      case PaymentOutcome.Cancelled cancelled -> {
+        /* No-op */
+      }
     }
 
-    @Transactional
-    public PaymentSession initiatePayment(String userId, PlanCode targetPlan) {
-        return paymentProvider.createSession(userId, targetPlan);
-    }
+    return session;
+  }
 
-    @Transactional
-    public PaymentSession completePayment(
-        UUID sessionId,
-        PaymentOutcome outcome
-    ) {
-        PaymentSession session = paymentProvider.completeSession(
-            sessionId,
-            outcome
-        );
-
-        switch (outcome) {
-            case PaymentOutcome.Succeeded succeeded -> applyPaymentSuccess(
-                session
-            );
-            case PaymentOutcome.Failed failed -> {
-                /* No-op */
-            }
-            case PaymentOutcome.Cancelled cancelled -> {
-                /* No-op */
-            }
-        }
-
-        return session;
-    }
-
-    private void applyPaymentSuccess(PaymentSession session) {
-        SubscriptionPlan plan = subscriptionCatalog
+  private void applyPaymentSuccess(PaymentSession session) {
+    SubscriptionPlan plan =
+        subscriptionCatalog
             .findPlan(session.targetPlan())
-            .orElseThrow(() ->
-                new IllegalStateException(
-                    "Plan not found: " + session.targetPlan()
-                )
-            );
+            .orElseThrow(
+                () -> new IllegalStateException("Plan not found: " + session.targetPlan()));
 
-        UserSubscriptionState currentState = subscriptionQueryService.stateFor(
-            session.userId()
-        );
+    UserSubscriptionState currentState = subscriptionQueryService.stateFor(session.userId());
 
-        ActiveSubscription updatedSubscription = new ActiveSubscription(
-            session.userId(),
-            session.targetPlan(),
-            Instant.now(),
-            null
-        );
+    ActiveSubscription updatedSubscription =
+        new ActiveSubscription(session.userId(), session.targetPlan(), Instant.now(), null);
 
-        TokenBalance updatedTokenBalance = new TokenBalance(
-            session.userId(),
-            plan.monthlyTokens(),
-            currentState.tokenBalance().reservedTokens()
-        );
+    TokenBalance updatedTokenBalance =
+        new TokenBalance(
+            session.userId(), plan.monthlyTokens(), currentState.tokenBalance().reservedTokens());
 
-        subscriptionStore.save(
-            new UserSubscriptionState(updatedSubscription, updatedTokenBalance)
-        );
-    }
+    subscriptionStore.save(new UserSubscriptionState(updatedSubscription, updatedTokenBalance));
+  }
 }

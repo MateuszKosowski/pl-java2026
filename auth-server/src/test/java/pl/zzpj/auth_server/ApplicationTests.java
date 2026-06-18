@@ -7,20 +7,18 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest(properties = {
-                "app.jwt.secret=TwojTestowySekretKtoryMusiBycWystarczajacoDlugiZebyZadowolicAlgorytmJWT",
-                "spring.cloud.config.enabled=false",
-                "eureka.client.enabled=false"
-})
+@SpringBootTest(
+    properties = {
+      "app.jwt.secret=TwojTestowySekretKtoryMusiBycWystarczajacoDlugiZebyZadowolicAlgorytmJWT",
+      "spring.cloud.config.enabled=false",
+      "eureka.client.enabled=false"
+    })
 @Testcontainers
 class ApplicationTests {
 
-	@Container
-	@ServiceConnection
-	static PostgreSQLContainer<?> postgresContainer = new PostgreSQLContainer<>("postgres:15-alpine");
+  @Container @ServiceConnection
+  static PostgreSQLContainer<?> postgresContainer = new PostgreSQLContainer<>("postgres:15-alpine");
 
-	@Test
-	void contextLoads() {
-	}
-
+  @Test
+  void contextLoads() {}
 }
