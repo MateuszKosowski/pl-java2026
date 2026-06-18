@@ -190,6 +190,11 @@ docker compose down -v
 
 ## Dokumentacja API (OpenAPI)
 
+### Referencja endpointów (Markdown)
+Pełna, źródłowo zweryfikowana dokumentacja wszystkich endpointów znajduje się w katalogu [`docs/api/`](docs/api/README.md):
+- [Przegląd, routing, model auth i ekonomia tokenów](docs/api/README.md)
+- [auth-server](docs/api/auth-server.md) · [subscription-service](docs/api/subscription-service.md) · [ai-service](docs/api/ai-service.md) · [watermark-service](docs/api/watermark-service.md) · [infrastruktura](docs/api/infrastructure.md)
+
 ### Skonsolidowana dokumentacja
 W głównym katalogu znajduje się plik `stegocloud-openapi.json` (połączone API wszystkich serwisów) oraz `api-docs.html` (interaktywny viewer).
 
@@ -232,6 +237,8 @@ POST /api/tokens/reservations
 POST /api/tokens/reservations/{reservationId}/consume
 POST /api/tokens/reservations/{reservationId}/release
 ```
+
+> **Znany problem:** endpointy `/api/tokens/reservations*` nie są obecnie zarejestrowane (klasa `TokenReservationController` nie ma adnotacji `@RestController`/`@RequestMapping`), więc zwracają **404** i blokują płatne operacje watermarku. Szczegóły i poprawka: [docs/api/subscription-service.md](docs/api/subscription-service.md#token-reservation).
 
 Watermark:
 
