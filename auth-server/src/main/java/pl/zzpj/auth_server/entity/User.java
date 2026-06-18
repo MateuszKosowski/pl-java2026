@@ -15,25 +15,25 @@ import lombok.*;
 @Builder
 public class User {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @NotBlank(message = "Username cannot be empty")
-    @Size(min = 3, max = 50)
-    @Column(nullable = false, unique = true)
-    private String username;
+  @NotBlank(message = "Username cannot be empty")
+  @Size(min = 3, max = 50)
+  @Column(nullable = false, unique = true)
+  private String username;
 
-    @Email(message = "Email should be valid")
-    @NotBlank(message = "Email cannot be empty")
-    @Column(nullable = false, unique = true)
-    private String email;
+  @Email(message = "Email should be valid")
+  @NotBlank(message = "Email cannot be empty")
+  @Column(nullable = false, unique = true)
+  private String email;
 
-    @NotBlank
-    @Column(nullable = false)
-    private String password;
+  @NotBlank
+  @Column(nullable = false)
+  private String password;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private UserRole role;
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
+  private UserRole role;
 }

@@ -9,18 +9,14 @@ import pl.zzpj.subscription_service.controller.dto.ServiceStatus;
 
 @RestController
 @RequestMapping("/api/subscriptions")
-@Tag(
-    name = "Subscription Status",
-    description = "Service health and status API"
-)
+@Tag(name = "Subscription Status", description = "Service health and status API")
 public class SubscriptionStatusController {
 
-    @GetMapping("/status")
-    @Operation(
-        summary = "Service status",
-        description = "Returns the current status of the subscription service."
-    )
-    public ServiceStatus status() {
-        return new ServiceStatus("subscription-service", "UP");
-    }
+  @GetMapping("/status")
+  @Operation(
+      summary = "Service status",
+      description = "Returns the current status of the subscription service.")
+  public ServiceStatus status() {
+    return new ServiceStatus("subscription-service", "UP");
+  }
 }

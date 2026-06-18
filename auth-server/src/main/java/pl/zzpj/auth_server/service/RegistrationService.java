@@ -16,35 +16,32 @@ import pl.zzpj.auth_server.repository.UserRepository;
 @RequiredArgsConstructor
 public class RegistrationService {
 
-    private final UserRepository userRepository;
-    private final BCryptPasswordEncoder passwordEncoder;
+  private final UserRepository userRepository;
+  private final BCryptPasswordEncoder passwordEncoder;
 
-    @Transactional
-    public RegisterResponse register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicateUserFieldException("email", "Email is already registered.");
-        }
-        if (userRepository.existsByUsername(request.getUsername())) {
-            throw new DuplicateUserFieldException("username", "Username is already taken.");
-        }
-
-        User user = User.builder()
-                .username(request.getUsername())
-                .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .role(UserRole.USER)
-                .build();
-
-        try {
-            User savedUser = userRepository.saveAndFlush(user);
-            return new RegisterResponse(
-                    savedUser.getId(),
-                    savedUser.getUsername(),
-                    savedUser.getEmail(),
-                    savedUser.getRole()
-            );
-        } catch (DataIntegrityViolationException exception) {
-            throw new DuplicateUserFieldException("user", "Username or email is already registered.");
-        }
+  @Transactional
+  public RegisterResponse register(RegisterRequest request) {
+    if (userRepository.existsByEmail(request.getEmail())) {
+      throw new DuplicateUserFieldException("email", "Email is already registered.");
     }
+    if (userRepository.existsByUsername(request.getUsername())) {
+      throw new DuplicateUserFieldException("username", "Username is already taken.");
+    }
+
+    User user =
+        User.builder()
+            .username(request.getUsername())
+            .email(request.getEmail())
+            .password(passwordEncoder.encode(request.getPassword()))
+            .role(UserRole.USER)
+            .build();
+
+    try {
+      User savedUser = userRepository.saveAndFlush(user);
+      return new RegisterResponse(
+          savedUser.getId(), savedUser.getUsername(), savedUser.getEmail(), savedUser.getRole());
+    } catch (DataIntegrityViolationException exception) {
+      throw new DuplicateUserFieldException("user", "Username or email is already registered.");
+    }
+  }
 }

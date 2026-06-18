@@ -14,26 +14,24 @@ import org.springframework.http.ResponseEntity;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ConfigServerIntegrationTest {
 
-    @Autowired
-    private TestRestTemplate restTemplate;
+  @Autowired private TestRestTemplate restTemplate;
 
-    @Test
-    void shouldReturnUnauthorizedWithoutCredentials() {
-        ResponseEntity<String> response = restTemplate.getForEntity(
-            "/ai-service/default",
-            String.class
-        );
-        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
-    }
+  @Test
+  void shouldReturnUnauthorizedWithoutCredentials() {
+    ResponseEntity<String> response =
+        restTemplate.getForEntity("/ai-service/default", String.class);
+    assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+  }
 
-    @Test
-    void shouldReturnConfigWithCredentials() {
-        ResponseEntity<String> response = restTemplate
+  @Test
+  void shouldReturnConfigWithCredentials() {
+    ResponseEntity<String> response =
+        restTemplate
             .withBasicAuth("admin", "admin")
             .getForEntity("/ai-service/default", String.class);
 
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertTrue(response.getBody().contains("ai-service"));
-    }
+    assertEquals(HttpStatus.OK, response.getStatusCode());
+    assertNotNull(response.getBody());
+    assertTrue(response.getBody().contains("ai-service"));
+  }
 }

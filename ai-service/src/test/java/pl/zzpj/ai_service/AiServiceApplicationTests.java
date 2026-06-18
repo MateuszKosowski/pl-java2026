@@ -7,20 +7,18 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import pl.zzpj.ai_service.client.AuthClient;
 
 @SpringBootTest
-@TestPropertySource(properties = {
-        "spring.cloud.config.enabled=false",
-        "eureka.client.enabled=false",
-        "ai.model.path=/tmp/model/mobilenetv2.onnx"
-})
+@TestPropertySource(
+    properties = {
+      "spring.cloud.config.enabled=false",
+      "eureka.client.enabled=false",
+      "ai.model.path=/tmp/model/mobilenetv2.onnx"
+    })
 class AiServiceApplicationTests {
 
-    @MockitoBean
-    ClassificationService classificationService;
+  @MockitoBean ClassificationService classificationService;
 
-    @MockitoBean
-    AuthClient authClient;
+  @MockitoBean AuthClient authClient;
 
-    @Test
-    void contextLoads() {
-    }
+  @Test
+  void contextLoads() {}
 }

@@ -17,63 +17,48 @@ import pl.zzpj.subscription_service.domain.subscription.SubscriptionPlan;
 
 @RestController
 @RequestMapping("/api/subscriptions")
-@Tag(
-    name = "Subscription Query",
-    description = "API for querying user subscriptions and plans"
-)
+@Tag(name = "Subscription Query", description = "API for querying user subscriptions and plans")
 public class SubscriptionQueryController {
 
-    private final SubscriptionQueryService subscriptionQueryService;
-    private final UserIdentityResolver userIdentityResolver;
+  private final SubscriptionQueryService subscriptionQueryService;
+  private final UserIdentityResolver userIdentityResolver;
 
-    public SubscriptionQueryController(
-        SubscriptionQueryService subscriptionQueryService,
-        UserIdentityResolver userIdentityResolver
-    ) {
-        this.subscriptionQueryService = subscriptionQueryService;
-        this.userIdentityResolver = userIdentityResolver;
-    }
+  public SubscriptionQueryController(
+      SubscriptionQueryService subscriptionQueryService,
+      UserIdentityResolver userIdentityResolver) {
+    this.subscriptionQueryService = subscriptionQueryService;
+    this.userIdentityResolver = userIdentityResolver;
+  }
 
-    @GetMapping("/plans")
-    @Operation(
-        summary = "List available plans",
-        description = "Returns a list of all available subscription plans."
-    )
-    public List<PlanView> plans() {
-        return subscriptionQueryService
-            .availablePlans()
-            .stream()
-            .map(this::toPlanView)
-            .toList();
-    }
+  @GetMapping("/plans")
+  @Operation(
+      summary = "List available plans",
+      description = "Returns a list of all available subscription plans.")
+  public List<PlanView> plans() {
+    return subscriptionQueryService.availablePlans().stream().map(this::toPlanView).toList();
+  }
 
-    @GetMapping("/me")
-    @Operation(
-        summary = "Current subscription",
-        description = "Returns details of the current user's active subscription."
-    )
-    public CurrentSubscriptionView currentSubscription(Principal principal) {
-        String userId = userIdentityResolver.resolve(principal);
-        UserSubscriptionState state = subscriptionQueryService.stateFor(userId);
-        return CurrentSubscriptionView.from(state.subscription());
-    }
+  @GetMapping("/me")
+  @Operation(
+      summary = "Current subscription",
+      description = "Returns details of the current user's active subscription.")
+  public CurrentSubscriptionView currentSubscription(Principal principal) {
+    String userId = userIdentityResolver.resolve(principal);
+    UserSubscriptionState state = subscriptionQueryService.stateFor(userId);
+    return CurrentSubscriptionView.from(state.subscription());
+  }
 
-    @GetMapping("/me/tokens")
-    @Operation(
-        summary = "Token balance",
-        description = "Returns the remaining token balance for the current user."
-    )
-    public TokenBalanceView tokenBalance(Principal principal) {
-        String userId = userIdentityResolver.resolve(principal);
-        UserSubscriptionState state = subscriptionQueryService.stateFor(userId);
-        return TokenBalanceView.from(state.tokenBalance());
-    }
+  @GetMapping("/me/tokens")
+  @Operation(
+      summary = "Token balance",
+      description = "Returns the remaining token balance for the current user.")
+  public TokenBalanceView tokenBalance(Principal principal) {
+    String userId = userIdentityResolver.resolve(principal);
+    UserSubscriptionState state = subscriptionQueryService.stateFor(userId);
+    return TokenBalanceView.from(state.tokenBalance());
+  }
 
-    private PlanView toPlanView(SubscriptionPlan plan) {
-        return new PlanView(
-            plan.code(),
-            plan.monthlyTokens(),
-            plan.allowedOperations()
-        );
-    }
+  private PlanView toPlanView(SubscriptionPlan plan) {
+    return new PlanView(plan.code(), plan.monthlyTokens(), plan.allowedOperations());
+  }
 }
