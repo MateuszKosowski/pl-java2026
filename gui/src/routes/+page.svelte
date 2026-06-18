@@ -22,6 +22,10 @@
         { id: "pricing", label: "Pricing" },
     ];
 
+    const planOrder = ["FREE", "STANDARD", "PRO"];
+    const maxImageSizeBytes = 20_000_000;
+    const maxImageSizeLabel = "20 MB";
+
     const operationCosts = {
         CAPACITY_CHECK: 0,
         DETECT: 1,
@@ -174,6 +178,21 @@
         }
     }
 
+    function canUpgradeTo(targetPlan) {
+        return (
+            planOrder.indexOf(targetPlan) >
+            planOrder.indexOf(subscription?.planCode)
+        );
+    }
+
+    function formatPlanExpiry(activeUntil) {
+        if (!activeUntil) return "No expiration";
+        return new Intl.DateTimeFormat("pl-PL", {
+            dateStyle: "medium",
+            timeStyle: "short",
+        }).format(new Date(activeUntil));
+    }
+
     async function completePayment(outcome) {
         if (!paymentSession) return;
         paymentError = "";
@@ -291,6 +310,8 @@
         if (!files || files.length === 0) return "Wybierz obraz z dysku.";
         if (files[0].size < 100)
             return "Wybrany plik jest zbyt mały lub uszkodzony.";
+        if (files[0].size > maxImageSizeBytes)
+            return `Wybrany obraz jest za duży. Maksymalny rozmiar pliku to ${maxImageSizeLabel}.`;
         return "";
     }
 
@@ -306,6 +327,8 @@
     }
 
     async function readError(response) {
+        if (response.status === 413)
+            return `Wybrany obraz jest za duży. Maksymalny rozmiar pliku to ${maxImageSizeLabel}.`;
         try {
             const data = await response.json();
             if (typeof data.detail === "string") return data.detail;
@@ -330,10 +353,15 @@
     async function probeCapacity() {
         if (!embedFiles || embedFiles.length === 0) return;
         capacityAbort?.abort();
+        const validation = validateImage(embedFiles);
+        capacity = null;
+        capacityError = validation || null;
+        if (validation) {
+            capacityChecking = false;
+            return;
+        }
         const controller = new AbortController();
         capacityAbort = controller;
-        capacity = null;
-        capacityError = null;
         capacityChecking = true;
         try {
             const formData = new FormData();
@@ -594,6 +622,14 @@
             <div class="metric">
                 <span>Role</span>
                 <strong>{currentRole}</strong>
+            </div>
+            <div class="metric">
+                <span>Plan valid until</span>
+                <strong
+                    class:metric-date={Boolean(subscription?.activeUntil)}
+                    title={subscription?.activeUntil ?? undefined}
+                    >{formatPlanExpiry(subscription?.activeUntil)}</strong
+                >
             </div>
             <button class="btn btn-outline compact" onclick={loadAccount}
                 >Refresh</button
@@ -913,7 +949,7 @@
                             <button class="btn btn-outline" disabled
                                 >Current plan</button
                             >
-                        {:else}
+                        {:else if canUpgradeTo(plan.code)}
                             <button
                                 class="btn btn-primary"
                                 onclick={() => initiatePayment(plan.code)}
@@ -921,6 +957,10 @@
                             >
                                 Upgrade to {plan.code}
                             </button>
+                        {:else}
+                            <button class="btn btn-outline" disabled
+                                >Downgrade unavailable</button
+                            >
                         {/if}
                     </div>
                 {/each}
@@ -1053,7 +1093,7 @@
 
     .account-panel {
         display: grid;
-        grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
+        grid-template-columns: repeat(5, minmax(110px, 1fr)) auto;
         gap: 10px;
         align-items: stretch;
         margin-bottom: 18px;
@@ -1087,9 +1127,13 @@
         font-size: 1.2rem;
     }
 
+    .metric strong.metric-date {
+        font-size: 0.95rem;
+    }
+
     .tabs {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 8px;
         margin-bottom: 18px;
     }
