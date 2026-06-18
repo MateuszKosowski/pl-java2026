@@ -55,11 +55,21 @@ System uzywa planow subskrypcji i tokenow. Kazda platna operacja najpierw rezerw
 | `EMBED_1024` | 8 |
 | `AI_CLASSIFICATION` | 2 |
 
-| Plan | Tokeny demo | Dozwolone operacje |
+| Plan | Tokeny / miesiac | Dozwolone operacje |
 |---|---:|---|
 | `FREE` | 50 | `CAPACITY_CHECK`, `DETECT`, `EMBED_768` |
 | `STANDARD` | 500 | `CAPACITY_CHECK`, `DETECT`, `EXTRACT`, `VISUALIZE`, `EMBED_768`, `EMBED_1024` |
 | `PRO` | 2500 | wszystkie operacje, wlacznie z `AI_CLASSIFICATION` |
+
+Cykl zycia subskrypcji:
+
+- dozwolone sa wylacznie przejscia `FREE -> STANDARD`, `FREE -> PRO` i `STANDARD -> PRO`,
+- downgrade oraz ponowny zakup aktywnego planu sa blokowane po stronie backendu,
+- platny plan jest wazny przez jeden miesiac od daty zakupu lub upgrade'u,
+- upgrade rozpoczyna nowy miesieczny okres i dodaje pelna pule tokenow nowego planu do aktualnego salda,
+- po wygasnieciu plan wraca do `FREE`, a saldo jest resetowane do 50 tokenow,
+- rezerwacje rozpoczete przed wygasnieciem moga zostac rozliczone, ale wygasly plan nie pozwala rozpoczynac nowych operacji,
+- finalizacja platnosci jest idempotentna i wymaga wlasciciela danej sesji platniczej.
 
 Zasady watermarkingu:
 
@@ -70,6 +80,7 @@ Zasady watermarkingu:
 - klasyfikacja AI jest opcjonalna i wykonywana tylko wtedy, gdy plan oraz saldo tokenow na to pozwalaja,
 - zwykly uzytkownik moze odczytywac tylko swoje watermarki,
 - administrator moze wykonywac detect/extract/visualize dla kazdego obrazu.
+- GUI przyjmuje obrazy o maksymalnym rozmiarze 20 MB i pokazuje date waznosci aktywnego planu.
 
 ## Mechanizmy Javy 21
 
@@ -213,6 +224,10 @@ Subscription:
 GET  /api/subscriptions/plans
 GET  /api/subscriptions/me
 GET  /api/subscriptions/me/tokens
+POST /api/payments/mock/sessions
+POST /api/payments/mock/sessions/{sessionId}/succeed
+POST /api/payments/mock/sessions/{sessionId}/fail
+POST /api/payments/mock/sessions/{sessionId}/cancel
 POST /api/tokens/reservations
 POST /api/tokens/reservations/{reservationId}/consume
 POST /api/tokens/reservations/{reservationId}/release
