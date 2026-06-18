@@ -48,6 +48,20 @@ public class SubscriptionStore {
                                 subscription.toDomain(), tokenBalance.toDomain())));
   }
 
+  @Transactional
+  public Optional<UserSubscriptionState> findForUpdate(String userId) {
+    return subscriptionRepository
+        .findByIdForUpdate(userId)
+        .flatMap(
+            subscription ->
+                tokenBalanceRepository
+                    .findById(userId)
+                    .map(
+                        tokenBalance ->
+                            new UserSubscriptionState(
+                                subscription.toDomain(), tokenBalance.toDomain())));
+  }
+
   private UserSubscriptionState create(UserSubscriptionState initialState) {
     subscriptionRepository.insertIfMissing(
         initialState.subscription().userId(),

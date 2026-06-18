@@ -6,7 +6,8 @@ public sealed interface TokenDecision
     permits Accepted,
         RejectedInsufficientTokens,
         RejectedOperationNotAllowed,
-        RejectedPlanNotFound {
+        RejectedPlanNotFound,
+        RejectedSubscriptionExpired {
 
   static String describe(TokenDecision decision) {
     return switch (decision) {
@@ -35,6 +36,7 @@ public sealed interface TokenDecision
       case RejectedOperationNotAllowed(var planCode, var operation) ->
           "Plan " + planCode + " does not allow operation " + operation;
       case RejectedPlanNotFound(var planCode) -> "Subscription plan " + planCode + " was not found";
+      case RejectedSubscriptionExpired(var expiredAt) -> "Subscription expired at " + expiredAt;
     };
   }
 }
