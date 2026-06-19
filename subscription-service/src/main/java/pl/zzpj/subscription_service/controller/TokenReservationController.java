@@ -9,6 +9,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import pl.zzpj.subscription_service.application.TokenReservationCommandService;
 import pl.zzpj.subscription_service.application.UserIdentityResolver;
 import pl.zzpj.subscription_service.application.command.CreateTokenReservationCommand;
@@ -24,6 +26,8 @@ import pl.zzpj.subscription_service.domain.token.decision.RejectedSubscriptionEx
 import pl.zzpj.subscription_service.domain.token.decision.TokenDecision;
 import pl.zzpj.subscription_service.persistence.entity.TokenReservationEntity;
 
+@RestController
+@RequestMapping("/api/tokens/reservations")
 @Tag(name = "Token Reservation", description = "API for managing token reservations for operations")
 public class TokenReservationController {
 
