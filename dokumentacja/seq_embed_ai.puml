@@ -1,0 +1,95 @@
+@startuml
+autonumber
+skinparam BoxBackgroundColor LightGray
+skinparam BoxBorderColor Gray
+skinparam ParticipantBackgroundColor LightCyan
+skinparam ParticipantBorderColor DarkCyan
+skinparam ActorBackgroundColor LightYellow
+skinparam ActorBorderColor Orange
+
+actor "Użytkownik (GUI)" as gui
+participant "Nginx Router" as nginx
+participant "Watermark Service\n(Python)" as wm
+participant "Subscription Service\n(Java/Spring)" as sub
+database "Baza Danych" as db
+participant "AI Service\n(Java/ONNX)" as ai
+
+gui -> nginx : POST /api/watermark/embed\n(JWT, image.png, text)
+activate nginx
+nginx -> wm : /embed
+activate wm
+
+wm -> wm : Sprawdzenie pojemności\ni formatu PNG
+wm -> sub : POST /api/tokens/reservations\n(EMBED_768 lub EMBED_1024)
+activate sub
+
+sub -> db : Sprawdzenie planu i salda
+activate db
+db --> sub : dane subskrypcji
+deactivate db
+
+sub -> db : Rezerwacja tokenów (status PENDING)
+activate db
+db --> sub : rezerwacja zapisana
+deactivate db
+
+sub --> wm : 201 Created (reservationId)
+deactivate sub
+
+alt Plan użytkownika pozwala na AI (PRO) oraz saldo jest wystarczające
+    wm -> sub : POST /api/tokens/reservations\n(AI_CLASSIFICATION)
+    activate sub
+    sub -> db : Rezerwacja 2 tokenów
+    activate db
+    db --> sub : zapisana
+    deactivate db
+    sub --> wm : 201 Created (aiReservationId)
+    deactivate sub
+    
+    wm -> ai : POST /api/classify (image.png)
+    activate ai
+    ai -> ai : Klasyfikacja obrazu\n(ONNX MobileNetV2)
+    ai --> wm : 200 OK (label, confidence)
+    deactivate ai
+    
+    wm -> sub : POST /api/tokens/reservations/{aiReservationId}/consume
+    activate sub
+    sub -> db : Pobranie 2 tokenów z salda\n(rezerwacja -> CONSUMED)
+    activate db
+    db --> sub : zaktualizowano
+    deactivate db
+    sub --> wm : 200 OK
+    deactivate sub
+else Plan FREE/STANDARD lub brak tokenów
+    note over wm : Pomiń klasyfikację AI\n(Zwróć status UNKNOWN dla AI)
+end
+
+wm -> wm : Szyfrowanie payloadu (AES-GCM)\n+ Kodowanie Reed-Solomon
+wm -> wm : Osadzanie bitów w DCT obrazu
+
+alt Osadzanie powiodło się
+    wm -> sub : POST /api/tokens/reservations/{reservationId}/consume
+    activate sub
+    sub -> db : Pobranie tokenów (rezerwacja -> CONSUMED)
+    activate db
+    db --> sub : zaktualizowano
+    deactivate db
+    sub --> wm : 200 OK
+    deactivate sub
+    wm --> nginx : 200 OK (obraz PNG z watermarkiem + nagłówki AI)
+    nginx --> gui : Zwrócenie obrazu i prezentacja w GUI
+else Wystąpił błąd algorytmu lub brak pojemności
+    wm -> sub : POST /api/tokens/reservations/{reservationId}/release
+    activate sub
+    sub -> db : Zwolnienie tokenów (rezerwacja -> RELEASED)
+    activate db
+    db --> sub : zaktualizowano
+    deactivate db
+    sub --> wm : 200 OK
+    deactivate sub
+    wm --> nginx : 400 Bad Request / 422 Unprocessable Entity
+    deactivate wm
+    nginx --> gui : Błąd w interfejsie
+    deactivate nginx
+end
+@enduml

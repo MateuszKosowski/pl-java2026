@@ -1,0 +1,133 @@
+@startuml
+skinparam class {
+  BackgroundColor LightYellow
+  BorderColor Orange
+  ArrowColor Black
+}
+skinparam interface {
+  BackgroundColor LightCyan
+  BorderColor DarkCyan
+}
+skinparam enum {
+  BackgroundColor LightPink
+  BorderColor Red
+}
+
+package "auth-server :: Domain Entities" {
+  class User {
+    - Long id
+    - String email
+    - String password
+    - UserRole role
+  }
+  
+  enum UserRole {
+    USER
+    ADMIN
+  }
+  
+  User --> UserRole
+}
+
+package "subscription-service :: Domain Model" {
+  class SubscriptionPlan {
+    - PlanCode planCode
+    - int monthlyTokens
+    - Set<TokenOperation> allowedOperations
+  }
+  
+  enum PlanCode {
+    FREE
+    STANDARD
+    PRO
+  }
+  
+  class ActiveSubscription {
+    - String userId
+    - SubscriptionPlan plan
+    - Instant validUntil
+    + boolean isExpired(Instant now)
+  }
+  
+  enum TokenOperation {
+    CAPACITY_CHECK
+    DETECT
+    EXTRACT
+    VISUALIZE
+    EMBED_768
+    EMBED_1024
+    AI_CLASSIFICATION
+  }
+  
+  class TokenBalance {
+    - String userId
+    - int activeBalance
+    - int reservedBalance
+    + void credit(int amount)
+    + void debit(int amount)
+  }
+  
+  class TokenReservation {
+    - String reservationId
+    - String userId
+    - TokenOperation operation
+    - int tokens
+    - TokenReservationStatus status
+    - Instant createdAt
+    - Instant expiresAt
+    + boolean isExpired(Instant now)
+  }
+  
+  enum TokenReservationStatus {
+    PENDING
+    CONSUMED
+    RELEASED
+  }
+  
+  interface TokenDecision <<sealed>>
+  class Accepted <<record>> implements TokenDecision {
+    - String reservationId
+    - int tokensReserved
+  }
+  class RejectedInsufficientTokens <<record>> implements TokenDecision
+  class RejectedOperationNotAllowed <<record>> implements TokenDecision
+  class RejectedSubscriptionExpired <<record>> implements TokenDecision
+  class RejectedPlanNotFound <<record>> implements TokenDecision
+
+  class PaymentSession {
+    - String sessionId
+    - String userId
+    - PlanCode targetPlan
+    - BigDecimal amount
+    - String status
+    - Instant createdAt
+  }
+
+  ActiveSubscription --> SubscriptionPlan
+  SubscriptionPlan --> PlanCode
+  SubscriptionPlan --> TokenOperation
+  TokenReservation --> TokenOperation
+  TokenReservation --> TokenReservationStatus
+  PaymentSession --> PlanCode
+}
+
+package "watermark-service-py :: Architecture" {
+  class WatermarkEngine {
+    + embed_text(image_bytes, text, owner, app_key)
+    + detect_watermark(image_bytes, app_key)
+    + extract_text(image_bytes, app_key)
+    + visualize_diff(image_bytes, app_key)
+  }
+  
+  class CryptoManager {
+    + encrypt_aes_gcm(plaintext, key)
+    + decrypt_aes_gcm(ciphertext, key)
+    + derive_key(app_key)
+  }
+  
+  class CapacityManager {
+    + capacity_report(image_bytes, owner)
+    + determine_tier(width, height)
+  }
+}
+@enduml
