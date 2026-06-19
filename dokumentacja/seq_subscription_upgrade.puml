@@ -44,7 +44,7 @@ deactivate db
 
 sub -> sub : Weryfikacja właściciela sesji\n(Zabezpieczenie przed przejęciem)
 
-sub -> db : Aktualizacja statusu sesji na SUCCESS
+sub -> db : Aktualizacja statusu sesji na SUCCEEDED
 activate db
 db --> sub : zaktualizowano
 deactivate db

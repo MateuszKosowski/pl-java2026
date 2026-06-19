@@ -255,3 +255,6 @@ gradle-app.setting
 # End of https://www.toptal.com/developers/gitignore/api/linux,windows,java,gradle,intellij,visualstudiocode,netbeans
 /.idea/dataSources.xml
 /.idea/sqldialects.xml
+
+# Playwright MCP scratch output (screenshots/snapshots for docs are saved under dokumentacja/)
+.playwright-mcp/

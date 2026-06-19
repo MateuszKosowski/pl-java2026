@@ -55,5 +55,5 @@ sub --> db_sub : JDBC (schema subscription)
 
 wm --> sub : Rezerwacja/Konsumpcja tokenów
 wm --> ai : Wywołanie klasyfikacji (REST)
-wm ..> auth : Weryfikacja tokenów JWT (klucz)
+wm ..> auth : Walidacja JWT (POST /auth/validate)
 @enduml

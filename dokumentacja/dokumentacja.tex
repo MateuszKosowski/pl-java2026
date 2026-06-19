@@ -203,7 +203,7 @@ Poniższe tabele szczegółowo opisują dwa kluczowe przypadki użycia systemu: 
 1. Użytkownik wybiera plik PNG oraz wpisuje treść znaku wodnego w GUI. \newline
 2. GUI wysyła żądanie do bramki Nginx, która przekazuje je do \texttt{watermark-service-py}. \newline
 3. \texttt{watermark-service-py} pyta \texttt{subscription-service} o rezerwację tokenów na operację embedowania. \newline
-4. \texttt{subscription-service} dokonuje rezerwacji tokenów o statusie \texttt{PENDING}. \newline
+4. \texttt{subscription-service} dokonuje rezerwacji tokenów o statusie \texttt{RESERVED}. \newline
 5. \texttt{watermark-service-py} pyta \texttt{subscription-service} o rezerwację tokenów na klasyfikację AI. Rezerwacja zostaje zatwierdzona. \newline
 6. \texttt{watermark-service-py} wysyła obraz do \texttt{ai-service}. \newline
 7. \texttt{ai-service} uruchamia model ONNX, klasyfikuje obraz i zwraca etykiety (np. klasyfikacja: "samochód", pewność: 94\%). \newline
@@ -241,7 +241,7 @@ Poniższe tabele szczegółowo opisują dwa kluczowe przypadki użycia systemu: 
 4. GUI przekierowuje użytkownika na stronę bramki płatności (Mock Payment Page). \newline
 5. Użytkownik klika przycisk "Zatwierdź płatność". \newline
 6. Bramka płatności wysyła żądanie sukcesu płatności do \texttt{subscription-service} przekazując \texttt{sessionId}. \newline
-7. \texttt{subscription-service} weryfikuje sesję i jej właściciela, a następnie zmienia status sesji na \texttt{SUCCESS}. \newline
+7. \texttt{subscription-service} weryfikuje sesję i jej właściciela, a następnie zmienia status sesji na \texttt{SUCCEEDED}. \newline
 8. Serwis modyfikuje subskrypcję użytkownika w bazie (nowy plan, nowa data ważności na +1 miesiąc). \newline
 9. Saldo tokenów użytkownika zostaje zasilone pełną pulą nowego planu. \newline
 10. Użytkownik zostaje przekierowany z powrotem do aplikacji, gdzie GUI prezentuje zaktualizowany stan konta. \\
@@ -298,9 +298,9 @@ Diagram klas prezentuje kluczowe encje bazodanowe, rekordy oraz interfejsy wchod
 \begin{itemize}
     \item \textbf{User \& UserRole}: Reprezentują użytkownika w systemie autoryzacji wraz z rolą przypisaną na potrzeby kontroli dostępu na poziomie endpointów (RBAC).
     \item \textbf{SubscriptionPlan}: Klasa definiująca właściwości planu taryfowego -- liczbę darmowych tokenów na miesiąc oraz zbiór dozwolonych operacji (\texttt{allowedOperations}).
-    \item \textbf{ActiveSubscription}: Encja reprezentująca powiązanie użytkownika z konkretnym planem subskrypcyjnym wraz z okresem jego ważności. Posiada metodę \texttt{isExpired()} określającą ważność subskrypcji.
-    \item \textbf{TokenBalance}: Encja reprezentująca bilans tokenów zalogowanego użytkownika. Zawiera informację o tokenach dostępnych (\texttt{activeBalance}) oraz zablokowanych na poczet trwających operacji (\texttt{reservedBalance}).
-    \item \textbf{TokenReservation}: Reprezentuje rezerwację tokenów dokonaną przez system podczas rozpoczęcia operacji steganograficznej. Posiada unikalne ID, typ operacji, koszt tokenowy oraz status (\texttt{PENDING}, \texttt{CONSUMED}, \texttt{RELEASED}).
+    \item \textbf{ActiveSubscription}: Rekord domenowy reprezentujący powiązanie użytkownika z konkretnym planem (\texttt{planCode}) wraz z okresem jego ważności (\texttt{activeFrom}, \texttt{activeUntil}). Posiada metodę \texttt{isExpiredAt(Instant)} określającą ważność subskrypcji.
+    \item \textbf{TokenBalance}: Rekord reprezentujący bilans tokenów zalogowanego użytkownika. Zawiera informację o tokenach dostępnych (\texttt{availableTokens}) oraz zablokowanych na poczet trwających operacji (\texttt{reservedTokens}).
+    \item \textbf{TokenReservation}: Reprezentuje rezerwację tokenów dokonaną przez system podczas rozpoczęcia operacji steganograficznej. Rekord domenowy zawiera unikalne ID (\texttt{UUID}), typ operacji oraz koszt tokenowy, natomiast status cyklu życia (\texttt{RESERVED}, \texttt{CONSUMED}, \texttt{RELEASED}) jest utrwalany w encji \texttt{TokenReservationEntity}.
     \item \textbf{TokenDecision}: Zamknięty interfejs (\texttt{sealed interface}), który przy użyciu mechanizmów Javy 21 wymusza kompletną obsługę wszystkich możliwych decyzji biznesowych dotyczących przydziału tokenów (akceptacja lub konkretny powód odmowy).
 \end{itemize}
 
@@ -345,13 +345,13 @@ Wybrane komponenty systemu zostały zaimplementowane przy użyciu technologii do
 \midrule
 Backend Core & Java 21 / Spring Boot 3 & Zapewnia stabilne środowisko, wysokie bezpieczeństwo typów oraz wsparcie dla najnowszych funkcjonalności JDK (rekordy, dopasowywanie wzorców dla switcha, sealed classes), które upraszczają kod domeny subskrypcji. \\
 \midrule
-Steganografia & Python 3.11 / FastAPI & Znakowanie obrazów wymaga niskopoziomowych operacji matematycznych (DCT) oraz wsparcia dla zaawansowanych bibliotek naukowych (NumPy, invisible-watermark). FastAPI zapewnia asynchroniczność oraz generuje automatyczną dokumentację OpenAPI. \\
+Steganografia & Python 3.12 / FastAPI & Znakowanie obrazów wymaga niskopoziomowych operacji matematycznych (DWT-DCT-SVD) oraz wsparcia dla zaawansowanych bibliotek naukowych (NumPy, OpenCV, invisible-watermark). FastAPI zapewnia asynchroniczność oraz generuje automatyczną dokumentację OpenAPI. \\
 \midrule
 AI/Klasyfikacja & ONNX Runtime (Java) & Umożliwia ładowanie i szybkie uruchamianie modeli sieci neuronowych (\texttt{MobileNetV2} wyeksportowanego z PyTorch) bezpośrednio w procesie Javy z optymalizacją sprzętową, bez potrzeby stawiania ciężkiego środowiska PyTorch. \\
 \midrule
-Baza Danych & PostgreSQL 16 & Stabilna, relacyjna baza danych obsługująca transakcje ACID niezbędne w logice rozliczania tokenów i płatności. Zapewnia izolację za pomocą osobnych schematów bazodanowych. \\
+Baza Danych & PostgreSQL 17 & Stabilna, relacyjna baza danych obsługująca transakcje ACID niezbędne w logice rozliczania tokenów i płatności. Zapewnia izolację za pomocą osobnych schematów bazodanowych. \\
 \midrule
-Frontend GUI & Svelte 4 / nginx & Svelte generuje niezwykle lekki kod kliencki (brak narzutu Virtual DOM), co przekłada się na szybkie ładowanie interfejsu. Nginx służy jako serwer statyczny i Gateway proxy. \\
+Frontend GUI & Svelte 5 (SvelteKit) / nginx & Svelte generuje niezwykle lekki kod kliencki (brak narzutu Virtual DOM), co przekłada się na szybkie ładowanie interfejsu. Nginx służy jako serwer statyczny i Gateway proxy. \\
 \midrule
 Narzędzia & Docker Compose / SonarQube & Konteneryzacja ułatwia lokalne uruchamianie całego rozproszonego środowiska. SonarQube umożliwia ciągłą analizę statyczną kodu w celu utrzymania długu technicznego na niskim poziomie. \\
 \bottomrule
@@ -363,28 +363,55 @@ Narzędzia & Docker Compose / SonarQube & Konteneryzacja ułatwia lokalne urucha
 % --- 8. DZIAŁANIE SYSTEMU ---
 \section{Działanie systemu}
 
-W tej sekcji przedstawiono kluczowe zrzuty ekranu prezentujące działanie działającego systemu StegoCloud.
+W tej sekcji przedstawiono kluczowe zrzuty ekranu prezentujące działanie systemu StegoCloud, wykonane na uruchomionej instancji (użytkownik \texttt{pro} z planem \texttt{PRO}).
 
 \subsection{Zrzuty ekranu interfejsu użytkownika}
 
 \begin{figure}[H]
     \centering
-    \framebox[\textwidth]{\parbox{0.9\textwidth}{\centering\vspace{3cm} \textbf{[Zrzut ekranu: Panel Logowania i Wyboru Subskrypcji]} \\ \small Przedstawia formularz uwierzytelniania użytkownika oraz listę dostępnych planów subskrypcyjnych (Free, Standard, Pro) wraz z saldem tokenów.\vspace{3cm}}}
-    \caption{Placeholder: Ekran wyboru planu subskrypcji i logowania}
+    \begin{subfigure}[t]{0.45\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{screen_login.png}
+        \caption{Ekran logowania z kontami demonstracyjnymi}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.53\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{screen_subscription.png}
+        \caption{Panel planów subskrypcji wraz z saldem tokenów}
+    \end{subfigure}
+    \caption{Ekran logowania oraz panel wyboru planu subskrypcji (Free, Standard, Pro) i salda tokenów}
     \label{fig:screen_login}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \framebox[\textwidth]{\parbox{0.9\textwidth}{\centering\vspace{3cm} \textbf{[Zrzut ekranu: Kreator Znakowania Obrazów - Embed]} \\ \small Widok przesyłania obrazu PNG, formularz wprowadzania ukrywanej wiadomości, informacja z Capacity Check o limicie znaków oraz wynik klasyfikacji AI (kategoria, ufność).\vspace{3cm}}}
-    \caption{Placeholder: Panel osadzania znaku wodnego z klasyfikacją AI}
+    \includegraphics[width=0.56\textwidth]{screen_embed.png}
+    \caption{Panel osadzania znaku wodnego: Capacity Check (rozmiar, tier \texttt{EMBED\_768}, limit tekstu, kontrola planu), klasyfikacja AI (\texttt{dog}, ufność 34\%) oraz wynikowy obraz PNG ze znakiem wodnym}
     \label{fig:screen_embed}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \framebox[\textwidth]{\parbox{0.9\textwidth}{\centering\vspace{3.5cm} \textbf{[Zrzut ekranu: Ekran Detekcji, Ekstrakcji oraz Heatmapy Różnic]} \\ \small Widok wczytanego stemplowanego obrazu, informacje o odczytanej tożsamości właściciela, wyodrębniony tekst steganograficzny oraz wizualizacja heatmapy pixel-diff.\vspace{3.5cm}}}
-    \caption{Placeholder: Ekran detekcji znaku wodnego i wizualizacji heatmapy różnic}
+    \begin{subfigure}[t]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{screen_detect.png}
+        \caption{Detekcja: wykryty znak wodny i tożsamość właściciela (\texttt{pro-4})}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{screen_extract.png}
+        \caption{Ekstrakcja: odczytany ukryty tekst (\texttt{StegoCloud2026})}
+    \end{subfigure}
+
+    \vspace{0.4cm}
+    \begin{subfigure}[t]{0.5\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{screen_visualize.png}
+        \caption{Wizualizacja: heatmapa różnic pikseli (pixel-diff)}
+    \end{subfigure}
+    \caption{Detekcja znaku wodnego, ekstrakcja ukrytego tekstu oraz wizualizacja heatmapy różnic}
     \label{fig:screen_detect}
 \end{figure}
 

@@ -32,15 +32,13 @@ rectangle "System StegoCloud" {
 
 user --> UC_capacity
 user --> UC_embed
-user --> UC_detect : własne obrazy
+user --> UC_detect
 user --> UC_extract : własne obrazy
-user --> UC_visualize : własne obrazy
+user --> UC_visualize
 user --> UC_status
 user --> UC_upgrade
 
-admin -up-> UC_detect : wszystkie obrazy
 admin -up-> UC_extract : wszystkie obrazy
-admin -up-> UC_visualize : wszystkie obrazy
 
 payment --> UC_payment_proc
 @enduml

@@ -28,7 +28,7 @@ activate db
 db --> sub : dane subskrypcji
 deactivate db
 
-sub -> db : Rezerwacja tokenów (status PENDING)
+sub -> db : Rezerwacja tokenów (status RESERVED)
 activate db
 db --> sub : rezerwacja zapisana
 deactivate db

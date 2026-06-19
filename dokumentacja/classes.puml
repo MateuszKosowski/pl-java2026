@@ -14,41 +14,45 @@ skinparam enum {
 }
 
 package "auth-server :: Domain Entities" {
-  class User {
+  class User <<entity>> {
     - Long id
+    - String username
     - String email
     - String password
     - UserRole role
   }
-  
+
   enum UserRole {
-    USER
     ADMIN
+    USER
   }
-  
+
   User --> UserRole
 }
 
 package "subscription-service :: Domain Model" {
-  class SubscriptionPlan {
-    - PlanCode planCode
+  class SubscriptionPlan <<record>> {
+    - PlanCode code
     - int monthlyTokens
     - Set<TokenOperation> allowedOperations
+    + boolean allows(TokenOperation op)
   }
-  
+
   enum PlanCode {
     FREE
     STANDARD
     PRO
+    + boolean canUpgradeTo(PlanCode target)
   }
-  
-  class ActiveSubscription {
+
+  class ActiveSubscription <<record>> {
     - String userId
-    - SubscriptionPlan plan
-    - Instant validUntil
-    + boolean isExpired(Instant now)
+    - PlanCode planCode
+    - Instant activeFrom
+    - Instant activeUntil
+    + boolean isExpiredAt(Instant instant)
   }
-  
+
   enum TokenOperation {
     CAPACITY_CHECK
     DETECT
@@ -58,76 +62,91 @@ package "subscription-service :: Domain Model" {
     EMBED_1024
     AI_CLASSIFICATION
   }
-  
-  class TokenBalance {
+
+  class TokenBalance <<record>> {
     - String userId
-    - int activeBalance
-    - int reservedBalance
-    + void credit(int amount)
-    + void debit(int amount)
+    - int availableTokens
+    - int reservedTokens
+    + boolean canReserve(int tokens)
+    + TokenBalance reserve(int tokens)
+    + TokenBalance consumeReserved(int tokens)
+    + TokenBalance releaseReserved(int tokens)
   }
-  
-  class TokenReservation {
-    - String reservationId
+
+  class TokenReservation <<record>> {
+    - UUID reservationId
     - String userId
     - TokenOperation operation
     - int tokens
+    - Instant expiresAt
+  }
+
+  class TokenReservationEntity <<entity>> {
+    - UUID id
     - TokenReservationStatus status
     - Instant createdAt
     - Instant expiresAt
-    + boolean isExpired(Instant now)
+    - Instant completedAt
+    + TokenReservation toDomain()
   }
-  
+
   enum TokenReservationStatus {
-    PENDING
+    RESERVED
     CONSUMED
     RELEASED
   }
-  
+
   interface TokenDecision <<sealed>>
   class Accepted <<record>> implements TokenDecision {
-    - String reservationId
-    - int tokensReserved
+    - TokenReservation reservation
   }
   class RejectedInsufficientTokens <<record>> implements TokenDecision
   class RejectedOperationNotAllowed <<record>> implements TokenDecision
   class RejectedSubscriptionExpired <<record>> implements TokenDecision
   class RejectedPlanNotFound <<record>> implements TokenDecision
 
-  class PaymentSession {
-    - String sessionId
+  class PaymentSession <<record>> {
+    - UUID id
     - String userId
     - PlanCode targetPlan
-    - BigDecimal amount
-    - String status
+    - Status status
     - Instant createdAt
+    - Instant updatedAt
   }
 
-  ActiveSubscription --> SubscriptionPlan
+  enum "PaymentSession.Status" as PaymentStatus {
+    PENDING
+    SUCCEEDED
+    FAILED
+    CANCELLED
+  }
+
+  ActiveSubscription --> PlanCode
   SubscriptionPlan --> PlanCode
   SubscriptionPlan --> TokenOperation
   TokenReservation --> TokenOperation
-  TokenReservation --> TokenReservationStatus
+  Accepted --> TokenReservation
+  TokenReservationEntity ..> TokenReservation : maps
+  TokenReservationEntity --> TokenReservationStatus
   PaymentSession --> PlanCode
+  PaymentSession --> PaymentStatus
 }
 
-package "watermark-service-py :: Architecture" {
-  class WatermarkEngine {
-    + embed_text(image_bytes, text, owner, app_key)
-    + detect_watermark(image_bytes, app_key)
-    + extract_text(image_bytes, app_key)
-    + visualize_diff(image_bytes, app_key)
+package "watermark-service-py :: Modules" {
+  class "watermark.py" as watermark <<module>> {
+    + embed_text(image_bytes, text, owner, app_key) : WatermarkResult
+    + detect_text(image_bytes, app_key) : DetectionResult
+    + visualize(image_bytes, app_key) : bytes
+    + capacity_report(image_bytes, owner) : CapacityReport
+    + select_length_bits(width, height) : int
   }
-  
-  class CryptoManager {
-    + encrypt_aes_gcm(plaintext, key)
-    + decrypt_aes_gcm(ciphertext, key)
-    + derive_key(app_key)
+
+  class "crypto.py" as crypto <<module>> {
+    + seal(owner, text, app_key) : bytes
+    + unseal(blob, app_key) : DecodedEnvelope
+    + max_text_bytes(length_bits, owner) : int
   }
-  
-  class CapacityManager {
-    + capacity_report(image_bytes, owner)
-    + determine_tier(width, height)
-  }
+
+  watermark ..> crypto : AES-GCM + Reed-Solomon
 }
 @enduml
