@@ -105,6 +105,9 @@
 % --- 1. WPROWADZENIE ---
 \section{Wprowadzenie}
 
+\subsection{Cel dokumentu}
+Niniejszy dokument stanowi dokumentację techniczną i projektową systemu \textbf{StegoCloud}. Jego celem jest kompleksowe przedstawienie założeń projektu, jego architektury oraz sposobu działania -- od przeznaczenia i głównych funkcji, poprzez przypadki użycia, diagramy komponentów, klas i interakcji, aż po wykorzystany stos technologiczny wraz z uzasadnieniem wyboru. Dokument skierowany jest do prowadzącego przedmiot \textit{Zaawansowane Zagadnienia Programowania w Javie}, członków zespołu projektowego oraz osób, które w przyszłości chciałyby rozwijać lub utrzymywać system.
+
 \subsection{Cel projektu}
 Głównym celem projektu \textbf{StegoCloud} jest zaprojektowanie oraz implementacja nowoczesnego, rozproszonego i bezpiecznego systemu do dystrybucji i weryfikacji obrazów cyfrowych za pomocą ukrytych (niewidocznych) znaków wodnych. System pozwala autorom oraz dystrybutorom treści multimedialnych (np. obrazów PNG) na weryfikację ich oryginalności oraz identyfikację ewentualnego źródła przecieku lub nieautoryzowanego użycia, przy jednoczesnym zabezpieczeniu samej treści znaku wodnego przed odczytem przez osoby nieuprawnione.
 
@@ -113,7 +116,7 @@ System został zaprojektowany w nowoczesnej architekturze mikroserwisowej i obej
 \begin{itemize}
     \item \textbf{Usługi autoryzacji i rejestracji} zarządzające tożsamościami użytkowników i ról (Zwykły Użytkownik, Administrator).
     \item \textbf{Moduł subskrypcyjny} realizujący logikę biznesową planów taryfowych (\texttt{FREE}, \texttt{STANDARD}, \texttt{PRO}) oraz dynamiczne zarządzanie saldem i rezerwacjami tokenów użytkowników.
-    \item \textbf{Serwis znakowania (watermarkingu)} oparty o zaawansowany silnik w języku Python osadzający zaszyfrowane komunikaty w dziedzinie częstotliwościowej (DCT) obrazów PNG.
+    \item \textbf{Serwis znakowania (watermarkingu)} oparty o zaawansowany silnik w języku Python osadzający zaszyfrowane komunikaty w dziedzinie częstotliwościowej (transformata DWT-DCT-SVD) obrazów PNG.
     \item \textbf{Serwis sztucznej inteligencji (AI)} dokonujący klasyfikacji zawartości obrazów przy użyciu modelu \texttt{MobileNetV2} w środowisku uruchomieniowym ONNX.
     \item \textbf{Interfejs graficzny użytkownika (GUI)} zrealizowany w technologii Svelte, pozwalający na łatwe korzystanie z funkcji platformy.
 \end{itemize}
@@ -132,7 +135,7 @@ StegoCloud jest skierowany przede wszystkim do:
 \section{Opis systemu}
 
 \subsection{Przeznaczenie}
-Platforma StegoCloud służy do bezpowrotnego, niewidocznego dla ludzkiego oka stemplowania cyfrowych plików PNG. W przeciwieństwie do widocznych znaków wodnych, które można łatwo wyciąć lub zamazać, steganografia w dziedzinie częstotliwościowej (Discrete Cosine Transform -- DCT) osadza informacje bezpośrednio w strukturze pikseli obrazu. Znak wodny chroniony jest kryptograficznie (AES-GCM) oraz nadmiarowo (Reed-Solomon Error Correction Code), co zapobiega fałszowaniu i pozwala na poprawny odczyt nawet przy drobnych zniekształceniach.
+Platforma StegoCloud służy do bezpowrotnego, niewidocznego dla ludzkiego oka stemplowania cyfrowych plików PNG. W przeciwieństwie do widocznych znaków wodnych, które można łatwo wyciąć lub zamazać, steganografia w dziedzinie częstotliwościowej (transformata DWT-DCT-SVD) osadza informacje w widmie częstotliwościowym obrazu, modyfikując współczynniki transformaty zamiast bezpośrednich wartości pikseli. Znak wodny chroniony jest kryptograficznie (AES-GCM) oraz nadmiarowo (Reed-Solomon Error Correction Code), co zapobiega fałszowaniu i pozwala na poprawny odczyt nawet przy drobnych zniekształceniach.
 
 \subsection{Główne funkcje}
 System oferuje następujące operacje taryfikowane odpowiednim kosztem tokenowym:
@@ -150,7 +153,7 @@ Projekt zrealizowano w architekturze mikroserwisowej z wykorzystaniem stosu tech
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{architecture.png}
+    \includegraphics[width=\textwidth]{architecture.pdf}
     \caption{Architektura mikroserwisowa systemu StegoCloud}
     \label{fig:architecture}
 \end{figure}
@@ -175,7 +178,7 @@ Diagram przypadków użycia przedstawia interakcje aktorów (Użytkownik, Admini
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.85\textwidth]{use_cases.png}
+    \includegraphics[width=\textwidth]{use_cases.pdf}
     \caption{Diagram przypadków użycia systemu StegoCloud}
     \label{fig:use_cases}
 \end{figure}
@@ -206,7 +209,7 @@ Poniższe tabele szczegółowo opisują dwa kluczowe przypadki użycia systemu: 
 4. \texttt{subscription-service} dokonuje rezerwacji tokenów o statusie \texttt{RESERVED}. \newline
 5. \texttt{watermark-service-py} pyta \texttt{subscription-service} o rezerwację tokenów na klasyfikację AI. Rezerwacja zostaje zatwierdzona. \newline
 6. \texttt{watermark-service-py} wysyła obraz do \texttt{ai-service}. \newline
-7. \texttt{ai-service} uruchamia model ONNX, klasyfikuje obraz i zwraca etykiety (np. klasyfikacja: "samochód", pewność: 94\%). \newline
+7. \texttt{ai-service} uruchamia model ONNX, klasyfikuje obraz i zwraca etykiety (np. klasyfikacja: "pies", pewność: 34\%). \newline
 8. \texttt{watermark-service-py} przesyła żądanie konsumpcji rezerwacji AI. \newline
 9. \texttt{watermark-service-py} szyfruje payload AES-GCM, koduje Reed-Solomon i osadza go w DCT obrazu. \newline
 10. Po poprawnym osadzeniu, serwis wysyła żądanie konsumpcji rezerwacji embedowania do \texttt{subscription-service}. \newline
@@ -263,7 +266,7 @@ Diagram komponentów przedstawia dekompozycję systemu na poszczególne moduły 
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{components.png}
+    \includegraphics[width=\textwidth]{components.pdf}
     \caption{Diagram komponentów systemu StegoCloud}
     \label{fig:components}
 \end{figure}
@@ -289,7 +292,7 @@ Diagram klas prezentuje kluczowe encje bazodanowe, rekordy oraz interfejsy wchod
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.98\textwidth]{classes.png}
+    \includegraphics[width=\textwidth]{classes.pdf}
     \caption{Diagram klas domenowych systemu StegoCloud}
     \label{fig:classes}
 \end{figure}
@@ -314,7 +317,7 @@ Diagram przedstawia sekwencję komunikatów i wywołań API podczas osadzania te
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.98\textwidth]{seq_embed_ai.png}
+    \includegraphics[width=\textwidth]{seq_embed_ai.pdf}
     \caption{Diagram sekwencyjny: Proces osadzania znaku wodnego z klasyfikacją AI}
     \label{fig:seq_embed_ai}
 \end{figure}
@@ -324,7 +327,7 @@ Diagram przedstawia przebieg rejestracji sesji płatniczej, jej opłacenia oraz 
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.98\textwidth]{seq_subscription_upgrade.png}
+    \includegraphics[width=\textwidth]{seq_subscription_upgrade.pdf}
     \caption{Diagram sekwencyjny: Proces zakupu / upgrade'u planu subskrypcji}
     \label{fig:seq_sub_upgrade}
 \end{figure}
@@ -364,6 +367,8 @@ Narzędzia & Docker Compose / SonarQube & Konteneryzacja ułatwia lokalne urucha
 \section{Działanie systemu}
 
 W tej sekcji przedstawiono kluczowe zrzuty ekranu prezentujące działanie systemu StegoCloud, wykonane na uruchomionej instancji (użytkownik \texttt{pro} z planem \texttt{PRO}).
+
+Typowy scenariusz korzystania z platformy obejmuje cztery kroki: (1) zalogowanie się i przegląd planu subskrypcji oraz salda tokenów; (2) wgranie pliku PNG i wpisanie ukrywanego tekstu w zakładce \emph{Embed} (z opcjonalną klasyfikacją AI dostępną dla planu \texttt{PRO}), a następnie pobranie oznaczonego obrazu; (3) weryfikację oznaczenia za pomocą zakładek \emph{Detect} (sprawdzenie właściciela) oraz \emph{Extract} (odczyt ukrytego tekstu); (4) podgląd rozmieszczenia znaku wodnego na mapie ciepła w zakładce \emph{Visualize}. Poniższe zrzuty ekranu ilustrują kolejne etapy tego przepływu.
 
 \subsection{Zrzuty ekranu interfejsu użytkownika}
 

@@ -1,4 +1,5 @@
 @startuml
+skinparam dpi 150
 autonumber
 skinparam BoxBackgroundColor LightGray
 skinparam BoxBorderColor Gray
