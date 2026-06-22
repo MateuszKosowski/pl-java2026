@@ -2,360 +2,397 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StegoCloud Combined API",
-    "version": "1.0.0",
-    "description": "Combined OpenAPI documentation for all StegoCloud services."
+    "version": "1.1.0",
+    "description": "Combined OpenAPI documentation for all StegoCloud services.\n\nThis single document aggregates four independently deployed services. Paths are the REAL on-service paths, and each path declares its own `servers` entry (host port) so the API can be exercised directly from Swagger UI:\n\n- auth-server — http://localhost:8081 — paths under `/auth`\n- subscription-service — http://localhost:8085 — paths under `/api/subscriptions`, `/api/payments`, `/api/tokens`\n- ai-service — http://localhost:8084 — `/api/classify` (internal-only; normally invoked by watermark-service, not the browser)\n- watermark-service — http://localhost:8082 — paths under `/api/watermark` plus `/health`\n\nThere is no API gateway. A browser reaches the services same-origin through the GUI nginx proxy (port 5173): `/auth/` -> auth-server, `/api/subscriptions|payments|tokens/` -> subscription-service, other `/api/` -> watermark-service.\n\nAuth model: obtain a JWT from `POST /auth/login`, then send `Authorization: Bearer <token>`. Protected services validate the token by calling auth-server `POST /auth/validate`.\n\nKNOWN ISSUE: the subscription-service token-reservation endpoints (`/api/tokens/reservations*`) are documented here as the intended contract, but the backing controller is currently missing its `@RestController`/`@RequestMapping(\"/api/tokens/reservations\")` annotations, so they return 404 until that is fixed. This breaks watermark paid operations, which depend on them."
   },
   "servers": [
-    {
-      "url": "http://localhost:8081",
-      "description": "Auth Server"
-    },
-    {
-      "url": "http://localhost:8085",
-      "description": "Subscription Service"
-    },
-    {
-      "url": "http://localhost:8084",
-      "description": "AI Service"
-    },
-    {
-      "url": "http://localhost:8082",
-      "description": "Watermark Service"
-    }
+    { "url": "http://localhost:8081", "description": "auth-server" },
+    { "url": "http://localhost:8085", "description": "subscription-service" },
+    { "url": "http://localhost:8084", "description": "ai-service (internal-only)" },
+    { "url": "http://localhost:8082", "description": "watermark-service" }
+  ],
+  "tags": [
+    { "name": "auth: Authentication", "description": "Registration, login and JWT validation (auth-server, port 8081). All endpoints are public." },
+    { "name": "subscription: Subscription Status", "description": "Service health/status (subscription-service, port 8085). Public." },
+    { "name": "subscription: Subscription Query", "description": "Plans, current subscription and token balance (subscription-service, port 8085)." },
+    { "name": "subscription: Mock Payment", "description": "Mock payment session lifecycle for plan upgrades (subscription-service, port 8085)." },
+    { "name": "subscription: Token Reservation", "description": "Reserve/consume/release operation tokens (subscription-service, port 8085). KNOWN ISSUE: controller not wired (returns 404) until @RestController/@RequestMapping are added." },
+    { "name": "ai: Classification", "description": "ONNX MobileNetV2 image classification (ai-service, port 8084). Internal-only." },
+    { "name": "watermark: Watermark", "description": "Encrypted PNG watermark embed/detect/extract/visualize/capacity (watermark-service, port 8082)." },
+    { "name": "watermark: Health", "description": "Watermark-service liveness (port 8082). Public." }
   ],
   "paths": {
-    "/auth/auth/validate": {
+    "/auth/register": {
+      "servers": [{ "url": "http://localhost:8081", "description": "auth-server" }],
       "post": {
-        "tags": [
-          "auth: Authentication"
-        ],
+        "tags": ["auth: Authentication"],
+        "summary": "Register user",
+        "description": "Creates a new user account. Unknown JSON properties are rejected. New accounts get the USER role.",
+        "operationId": "register",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/auth_RegisterRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/auth_RegisterResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failure (field->message map), malformed JSON, or unknown property",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/auth_FieldErrors" } }
+            }
+          },
+          "409": {
+            "description": "Duplicate email or username (field->message map)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/auth_FieldErrors" } }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "servers": [{ "url": "http://localhost:8081", "description": "auth-server" }],
+      "post": {
+        "tags": ["auth: Authentication"],
+        "summary": "Login user",
+        "description": "Authenticates a user and returns a signed JWT (HMAC-SHA, 24h expiry, claims sub/userId/role).",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/auth_LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/auth_LoginResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failure (field->message map)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/auth_FieldErrors" } }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials. Plain-text body: \"Invalid password\" or \"User not found\".",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/auth/validate": {
+      "servers": [{ "url": "http://localhost:8081", "description": "auth-server" }],
+      "post": {
+        "tags": ["auth: Authentication"],
         "summary": "Validate token",
-        "description": "Validates the provided JWT token.",
+        "description": "Returns true if the JWT parses and the signature is valid, false otherwise. Never errors on a bad token. Used by other services to validate bearer tokens.",
         "operationId": "validateToken",
         "parameters": [
           {
             "name": "token",
             "in": "query",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
+            "schema": { "type": "string" }
           }
         ],
         "responses": {
           "200": {
             "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "boolean"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "type": "boolean" } } }
           }
         }
       }
     },
-    "/auth/auth/register": {
-      "post": {
-        "tags": [
-          "auth: Authentication"
-        ],
-        "summary": "Register user",
-        "description": "Creates a new user account with the provided details.",
-        "operationId": "register",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/auth_RegisterRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/auth_RegisterResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/auth/login": {
-      "post": {
-        "tags": [
-          "auth: Authentication"
-        ],
-        "summary": "Login user",
-        "description": "Authenticates a user and returns a JWT token.",
-        "operationId": "login",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/auth_LoginRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/subscription/api/payments/mock/sessions": {
-      "post": {
-        "tags": [
-          "subscription: mock-payment-controller"
-        ],
-        "operationId": "createSession",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/subscription_CreatePaymentSessionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/subscription_PaymentSessionResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/subscription/api/payments/mock/sessions/{sessionId}/succeed": {
-      "post": {
-        "tags": [
-          "subscription: mock-payment-controller"
-        ],
-        "operationId": "succeed",
-        "parameters": [
-          {
-            "name": "sessionId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/subscription_PaymentSessionResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/subscription/api/payments/mock/sessions/{sessionId}/fail": {
-      "post": {
-        "tags": [
-          "subscription: mock-payment-controller"
-        ],
-        "operationId": "fail",
-        "parameters": [
-          {
-            "name": "sessionId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/subscription_PaymentSessionResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/subscription/api/payments/mock/sessions/{sessionId}/cancel": {
-      "post": {
-        "tags": [
-          "subscription: mock-payment-controller"
-        ],
-        "operationId": "cancel",
-        "parameters": [
-          {
-            "name": "sessionId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/subscription_PaymentSessionResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/subscription/api/subscriptions/status": {
+    "/api/subscriptions/status": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
       "get": {
-        "tags": [
-          "subscription: Subscription Status"
-        ],
+        "tags": ["subscription: Subscription Status"],
         "summary": "Service status",
-        "description": "Returns the current status of the subscription service.",
+        "description": "Public health/status of the subscription service.",
         "operationId": "status",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/subscription_ServiceStatus"
-                }
-              }
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_ServiceStatus" } }
             }
           }
         }
       }
     },
-    "/subscription/api/subscriptions/plans": {
+    "/api/subscriptions/plans": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
       "get": {
-        "tags": [
-          "subscription: Subscription Query"
-        ],
+        "tags": ["subscription: Subscription Query"],
         "summary": "List available plans",
-        "description": "Returns a list of all available subscription plans.",
+        "description": "Returns all subscription plans with their monthly token grant and allowed operations.",
         "operationId": "plans",
+        "security": [{ "HTTPBearer": [] }],
         "responses": {
           "200": {
             "description": "OK",
             "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/subscription_PlanView"
-                  }
-                }
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/subscription_PlanView" } }
               }
             }
-          }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
-    "/subscription/api/subscriptions/me": {
+    "/api/subscriptions/me": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
       "get": {
-        "tags": [
-          "subscription: Subscription Query"
-        ],
+        "tags": ["subscription: Subscription Query"],
         "summary": "Current subscription",
-        "description": "Returns details of the current user's active subscription.",
+        "description": "Returns the caller's active subscription. A user with no subscription is auto-initialized to FREE.",
         "operationId": "currentSubscription",
+        "security": [{ "HTTPBearer": [] }],
         "responses": {
           "200": {
             "description": "OK",
             "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/subscription_CurrentSubscriptionView"
-                }
-              }
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_CurrentSubscriptionView" } }
             }
-          }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
-    "/subscription/api/subscriptions/me/tokens": {
+    "/api/subscriptions/me/tokens": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
       "get": {
-        "tags": [
-          "subscription: Subscription Query"
-        ],
+        "tags": ["subscription: Subscription Query"],
         "summary": "Token balance",
-        "description": "Returns the remaining token balance for the current user.",
+        "description": "Returns the caller's available and reserved token counts.",
         "operationId": "tokenBalance",
+        "security": [{ "HTTPBearer": [] }],
         "responses": {
           "200": {
             "description": "OK",
             "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/subscription_TokenBalanceView"
-                }
-              }
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_TokenBalanceView" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/payments/mock/sessions": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
+      "post": {
+        "tags": ["subscription: Mock Payment"],
+        "summary": "Create payment session",
+        "description": "Starts a mock payment session for a plan upgrade. The target must be a valid upgrade (FREE->STANDARD, FREE->PRO, STANDARD->PRO); downgrades or repurchasing the active plan are rejected. NOTE: subscription-service has no @RestControllerAdvice, so domain violations surface as HTTP 500 with Spring's default error body.",
+        "operationId": "createSession",
+        "security": [{ "HTTPBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/subscription_CreatePaymentSessionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK (status PENDING)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_PaymentSessionResponse" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/SpringDefaultError" }
+        }
+      }
+    },
+    "/api/payments/mock/sessions/{sessionId}/succeed": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
+      "post": {
+        "tags": ["subscription: Mock Payment"],
+        "summary": "Finalize session as succeeded",
+        "description": "Marks the session SUCCEEDED and applies the plan: starts a new one-month period and adds the plan's monthly tokens to the balance. Idempotent and owner-scoped.",
+        "operationId": "succeed",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          { "name": "sessionId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (status SUCCEEDED)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_PaymentSessionResponse" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/SpringDefaultError" }
+        }
+      }
+    },
+    "/api/payments/mock/sessions/{sessionId}/fail": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
+      "post": {
+        "tags": ["subscription: Mock Payment"],
+        "summary": "Finalize session as failed",
+        "description": "Marks the session FAILED. No subscription change. Idempotent and owner-scoped.",
+        "operationId": "fail",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          { "name": "sessionId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (status FAILED)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_PaymentSessionResponse" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/SpringDefaultError" }
+        }
+      }
+    },
+    "/api/payments/mock/sessions/{sessionId}/cancel": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
+      "post": {
+        "tags": ["subscription: Mock Payment"],
+        "summary": "Finalize session as cancelled",
+        "description": "Marks the session CANCELLED. No subscription change. Idempotent and owner-scoped.",
+        "operationId": "cancel",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          { "name": "sessionId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (status CANCELLED)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_PaymentSessionResponse" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/SpringDefaultError" }
+        }
+      }
+    },
+    "/api/tokens/reservations": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
+      "post": {
+        "tags": ["subscription: Token Reservation"],
+        "summary": "Reserve tokens",
+        "description": "Reserves tokens for an operation (15-minute TTL). KNOWN ISSUE: the backing controller is missing @RestController/@RequestMapping(\"/api/tokens/reservations\") and currently returns 404; documented as the intended contract.",
+        "operationId": "reserveTokens",
+        "security": [{ "HTTPBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/subscription_CreateTokenReservationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created (status RESERVED)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_TokenReservationResponse" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": {
+            "description": "OPERATION_NOT_ALLOWED — plan does not permit the operation",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_TokenReservationErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "Reservation rejected — code one of INSUFFICIENT_TOKENS, PLAN_NOT_FOUND, SUBSCRIPTION_EXPIRED",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_TokenReservationErrorResponse" } }
             }
           }
         }
       }
     },
-    "/ai/api/classify": {
+    "/api/tokens/reservations/{reservationId}/consume": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
       "post": {
-        "tags": [
-          "ai: Classification"
+        "tags": ["subscription: Token Reservation"],
+        "summary": "Consume reservation",
+        "description": "Finalizes a reservation, deducting the tokens from the balance. Owner-scoped. KNOWN ISSUE: see POST /api/tokens/reservations.",
+        "operationId": "consumeReservation",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          { "name": "reservationId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
         ],
+        "responses": {
+          "200": {
+            "description": "OK (status CONSUMED)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_TokenReservationResponse" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/tokens/reservations/{reservationId}/release": {
+      "servers": [{ "url": "http://localhost:8085", "description": "subscription-service" }],
+      "post": {
+        "tags": ["subscription: Token Reservation"],
+        "summary": "Release reservation",
+        "description": "Cancels a reservation, returning the tokens to the balance. Owner-scoped. KNOWN ISSUE: see POST /api/tokens/reservations.",
+        "operationId": "releaseReservation",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          { "name": "reservationId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (status RELEASED)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/subscription_TokenReservationResponse" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/classify": {
+      "servers": [{ "url": "http://localhost:8084", "description": "ai-service (internal-only)" }],
+      "post": {
+        "tags": ["ai: Classification"],
         "summary": "Classify image",
-        "description": "Uses an ONNX model to classify the content of the provided image file.",
+        "description": "Classifies an image with an ONNX MobileNetV2 model. Internal-only: in normal operation watermark-service calls this during embed; it is not exposed via the GUI proxy. Multipart limits: file 20MB, request 25MB.",
         "operationId": "classify",
+        "security": [{ "HTTPBearer": [] }],
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  }
-                },
-                "required": [
-                  "file"
-                ]
+                "properties": { "file": { "type": "string", "format": "binary" } },
+                "required": ["file"]
               }
             }
           }
@@ -364,400 +401,322 @@
           "200": {
             "description": "OK",
             "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ai_ClassificationResult"
-                }
-              }
+              "application/json": { "schema": { "$ref": "#/components/schemas/ai_ClassificationResult" } }
             }
+          },
+          "400": {
+            "description": "Bad request (IllegalArgumentException)",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": {
+            "description": "Classification/IO/ONNX error or unreadable/oversized image",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
           }
         }
       }
     },
-    "/watermark/api/watermark/embed": {
+    "/api/watermark/embed": {
+      "servers": [{ "url": "http://localhost:8082", "description": "watermark-service" }],
       "post": {
-        "tags": [
-          "watermark: Watermark"
-        ],
+        "tags": ["watermark: Watermark"],
         "summary": "Embed watermark",
-        "description": "Embeds a text watermark into a PNG image using the owner's identity.",
-        "operationId": "embed_api_watermark_embed_post",
+        "description": "Embeds an AES-GCM encrypted text watermark into a PNG using the caller's identity as owner. Reserves EMBED_768 or EMBED_1024 tokens (by image pixel count vs 1920x1080) and, when the plan/balance allow, AI_CLASSIFICATION. Returns the watermarked PNG bytes.",
+        "operationId": "embed",
+        "security": [{ "HTTPBearer": [] }],
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/watermark_Body_embed_api_watermark_embed_post"
-              }
+              "schema": { "$ref": "#/components/schemas/watermark_EmbedBody" }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "description": "Watermarked PNG image bytes",
+            "headers": {
+              "X-Image-Category": { "schema": { "type": "string" }, "description": "AI category (\"unknown\" when not classified)" },
+              "X-Image-Label": { "schema": { "type": "string" }, "description": "AI top-1 label" },
+              "X-Image-Confidence": { "schema": { "type": "string" }, "description": "AI top-1 confidence" },
+              "X-Image-Category-Confidence": { "schema": { "type": "string" }, "description": "AI aggregated category confidence" },
+              "X-Max-Text-Bytes": { "schema": { "type": "string" }, "description": "Max embeddable text bytes for this image/owner" },
+              "X-Watermark-Length-Bits": { "schema": { "type": "string" }, "description": "Selected watermark tier in bits (768 or 1024)" }
+            },
+            "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "400": {
+            "description": "Blank text, non-PNG image, image too small, or text too long for image/owner",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
+          },
+          "401": { "$ref": "#/components/responses/WatermarkUnauthorized" },
+          "403": {
+            "description": "Token reservation forbidden for the operation (propagated from subscription-service)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
+          },
+          "409": {
+            "description": "Token reservation conflict (propagated from subscription-service)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
+          },
+          "413": {
+            "description": "Text larger than 4096 bytes (or image larger than 25MB)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
           },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
-                }
-              }
-            }
+            "description": "Embed verification failed at every tier, or request validation error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_HTTPValidationError" } } }
+          },
+          "503": {
+            "description": "auth-server or subscription-service unavailable",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
-    "/watermark/api/watermark/detect": {
+    "/api/watermark/detect": {
+      "servers": [{ "url": "http://localhost:8082", "description": "watermark-service" }],
       "post": {
-        "tags": [
-          "watermark: Watermark"
-        ],
+        "tags": ["watermark: Watermark"],
         "summary": "Detect watermark",
-        "description": "Checks if a PNG image contains a watermark and returns the owner identity if found.",
-        "operationId": "detect_api_watermark_detect_post",
+        "description": "Checks whether a PNG contains a StegoCloud watermark and returns the owner identity if found. Reserves DETECT (1 token).",
+        "operationId": "detect",
+        "security": [{ "HTTPBearer": [] }],
         "requestBody": {
+          "required": true,
           "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/watermark_Body_detect_api_watermark_detect_post"
-              }
-            }
-          },
-          "required": true
+            "multipart/form-data": { "schema": { "$ref": "#/components/schemas/watermark_ImageBody" } }
+          }
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_DetectResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/WatermarkUnauthorized" },
+          "413": {
+            "description": "Image larger than 25MB",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
           },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
-                }
-              }
-            }
+            "description": "Request validation error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_HTTPValidationError" } } }
+          },
+          "503": {
+            "description": "auth-server or subscription-service unavailable",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
-    "/watermark/api/watermark/extract": {
+    "/api/watermark/extract": {
+      "servers": [{ "url": "http://localhost:8082", "description": "watermark-service" }],
       "post": {
-        "tags": [
-          "watermark: Watermark"
-        ],
+        "tags": ["watermark: Watermark"],
         "summary": "Extract watermark text",
-        "description": "Extracts the hidden text from a watermarked PNG image. Requires owner or admin permissions.",
-        "operationId": "extract_api_watermark_extract_post",
+        "description": "Extracts and decrypts the hidden text from a watermarked PNG. The caller must be the watermark owner or an admin token. Reserves EXTRACT (2 tokens).",
+        "operationId": "extract",
+        "security": [{ "HTTPBearer": [] }],
         "requestBody": {
+          "required": true,
           "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/watermark_Body_extract_api_watermark_extract_post"
-              }
-            }
-          },
-          "required": true
+            "multipart/form-data": { "schema": { "$ref": "#/components/schemas/watermark_ImageBody" } }
+          }
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_ExtractResponse" } } }
+          },
+          "400": {
+            "description": "No watermark found in this image",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
+          },
+          "401": { "$ref": "#/components/responses/WatermarkUnauthorized" },
+          "403": {
+            "description": "Requester is not allowed to read this watermark (not owner, not admin)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
+          },
+          "413": {
+            "description": "Image larger than 25MB",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
           },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
-                }
-              }
-            }
+            "description": "Request validation error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_HTTPValidationError" } } }
+          },
+          "503": {
+            "description": "auth-server or subscription-service unavailable",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
-    "/watermark/api/watermark/visualize": {
+    "/api/watermark/visualize": {
+      "servers": [{ "url": "http://localhost:8082", "description": "watermark-service" }],
       "post": {
-        "tags": [
-          "watermark: Watermark"
-        ],
+        "tags": ["watermark: Watermark"],
         "summary": "Visualize watermark",
-        "description": "Generates a heatmap showing the watermark distribution in the PNG image.",
-        "operationId": "visualize_endpoint_api_watermark_visualize_post",
+        "description": "Generates a PNG heatmap of the watermark distribution. Reserves VISUALIZE (3 tokens).",
+        "operationId": "visualize",
+        "security": [{ "HTTPBearer": [] }],
         "requestBody": {
+          "required": true,
           "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/watermark_Body_visualize_endpoint_api_watermark_visualize_post"
-              }
-            }
-          },
-          "required": true
+            "multipart/form-data": { "schema": { "$ref": "#/components/schemas/watermark_ImageBody" } }
+          }
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "description": "Heatmap PNG image bytes",
+            "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } }
           },
+          "401": { "$ref": "#/components/responses/WatermarkUnauthorized" },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
-                }
-              }
-            }
+            "description": "Request validation error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_HTTPValidationError" } } }
+          },
+          "503": {
+            "description": "auth-server or subscription-service unavailable",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
-    "/watermark/api/watermark/capacity": {
+    "/api/watermark/capacity": {
+      "servers": [{ "url": "http://localhost:8082", "description": "watermark-service" }],
       "post": {
-        "tags": [
-          "watermark: Watermark"
-        ],
+        "tags": ["watermark: Watermark"],
         "summary": "Check watermark capacity",
-        "description": "Calculates the maximum text size that can be embedded into the provided image.",
-        "operationId": "capacity_api_watermark_capacity_post",
+        "description": "Calculates the maximum embeddable text size for an image and owner. Requires authentication but reserves no tokens (CAPACITY_CHECK is free).",
+        "operationId": "capacity",
+        "security": [{ "HTTPBearer": [] }],
         "requestBody": {
+          "required": true,
           "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/watermark_Body_capacity_api_watermark_capacity_post"
-              }
-            }
-          },
-          "required": true
+            "multipart/form-data": { "schema": { "$ref": "#/components/schemas/watermark_ImageBody" } }
+          }
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_CapacityResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/WatermarkUnauthorized" },
+          "413": {
+            "description": "Image larger than 25MB",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
           },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/watermark_HTTPValidationError"
-                }
-              }
-            }
+            "description": "Request validation error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_HTTPValidationError" } } }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
-    "/watermark/health": {
+    "/health": {
+      "servers": [{ "url": "http://localhost:8082", "description": "watermark-service" }],
       "get": {
+        "tags": ["watermark: Health"],
         "summary": "Health",
-        "operationId": "health_health_get",
+        "description": "Liveness probe for watermark-service. Public. This is the service's only health endpoint (no /actuator).",
+        "operationId": "health",
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_HealthResponse" } } }
           }
         }
       }
     }
   },
   "components": {
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid bearer token",
+        "content": { "application/json": { "schema": { "type": "object" } } }
+      },
+      "WatermarkUnauthorized": {
+        "description": "Missing/invalid bearer token (401) — body {\"detail\":{\"error\":\"Invalid or expired token\"}}",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/watermark_Error" } } }
+      },
+      "SpringDefaultError": {
+        "description": "Spring Boot default error response. subscription-service has no @RestControllerAdvice, so domain violations (unknown session, wrong owner, already finalized, illegal upgrade) surface here.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SpringErrorBody" } } }
+      }
+    },
     "schemas": {
       "auth_RegisterRequest": {
         "type": "object",
         "properties": {
-          "username": {
-            "type": "string",
-            "maxLength": 50,
-            "minLength": 3
-          },
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
+          "username": { "type": "string", "minLength": 3, "maxLength": 50 },
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
         },
-        "required": [
-          "email",
-          "password",
-          "username"
-        ]
+        "required": ["username", "email", "password"]
       },
       "auth_RegisterResponse": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "username": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "ADMIN",
-              "USER"
-            ]
-          }
+          "id": { "type": "integer", "format": "int64" },
+          "username": { "type": "string" },
+          "email": { "type": "string" },
+          "role": { "type": "string", "enum": ["ADMIN", "USER"] }
         }
       },
       "auth_LoginRequest": {
         "type": "object",
         "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
+          "email": { "type": "string" },
+          "password": { "type": "string" }
         },
-        "required": [
-          "email",
-          "password"
-        ]
+        "required": ["email", "password"]
+      },
+      "auth_LoginResponse": {
+        "type": "object",
+        "properties": { "token": { "type": "string", "description": "Signed JWT (use as Authorization: Bearer)" } }
+      },
+      "auth_FieldErrors": {
+        "type": "object",
+        "description": "Map of field name to validation/conflict message.",
+        "additionalProperties": { "type": "string" }
       },
       "subscription_CreatePaymentSessionRequest": {
         "type": "object",
-        "properties": {
-          "targetPlan": {
-            "type": "string",
-            "enum": [
-              "FREE",
-              "STANDARD",
-              "PRO"
-            ]
-          }
-        }
+        "properties": { "targetPlan": { "$ref": "#/components/schemas/subscription_PlanCode" } },
+        "required": ["targetPlan"]
       },
       "subscription_PaymentSessionResponse": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "userId": {
-            "type": "string"
-          },
-          "targetPlan": {
-            "type": "string",
-            "enum": [
-              "FREE",
-              "STANDARD",
-              "PRO"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "SUCCEEDED",
-              "FAILED",
-              "CANCELLED"
-            ]
-          }
+          "id": { "type": "string", "format": "uuid" },
+          "userId": { "type": "string" },
+          "targetPlan": { "$ref": "#/components/schemas/subscription_PlanCode" },
+          "status": { "type": "string", "enum": ["PENDING", "SUCCEEDED", "FAILED", "CANCELLED"] }
         }
       },
       "subscription_ServiceStatus": {
         "type": "object",
         "properties": {
-          "service": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          }
+          "service": { "type": "string" },
+          "status": { "type": "string" }
         }
+      },
+      "subscription_PlanCode": {
+        "type": "string",
+        "enum": ["FREE", "STANDARD", "PRO"]
+      },
+      "subscription_TokenOperation": {
+        "type": "string",
+        "enum": ["CAPACITY_CHECK", "DETECT", "EXTRACT", "VISUALIZE", "EMBED_768", "EMBED_1024", "AI_CLASSIFICATION"]
       },
       "subscription_PlanView": {
         "type": "object",
         "properties": {
-          "code": {
-            "type": "string",
-            "enum": [
-              "FREE",
-              "STANDARD",
-              "PRO"
-            ]
-          },
-          "monthlyTokens": {
-            "type": "integer",
-            "format": "int32"
-          },
+          "code": { "$ref": "#/components/schemas/subscription_PlanCode" },
+          "monthlyTokens": { "type": "integer", "format": "int32" },
           "allowedOperations": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "CAPACITY_CHECK",
-                "DETECT",
-                "EXTRACT",
-                "VISUALIZE",
-                "EMBED_768",
-                "EMBED_1024",
-                "AI_CLASSIFICATION"
-              ]
-            },
+            "items": { "$ref": "#/components/schemas/subscription_TokenOperation" },
             "uniqueItems": true
           }
         }
@@ -765,200 +724,159 @@
       "subscription_CurrentSubscriptionView": {
         "type": "object",
         "properties": {
-          "userId": {
-            "type": "string"
-          },
-          "planCode": {
-            "type": "string",
-            "enum": [
-              "FREE",
-              "STANDARD",
-              "PRO"
-            ]
-          },
-          "activeFrom": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "activeUntil": {
-            "type": "string",
-            "format": "date-time"
-          }
+          "userId": { "type": "string" },
+          "planCode": { "$ref": "#/components/schemas/subscription_PlanCode" },
+          "activeFrom": { "type": "string", "format": "date-time" },
+          "activeUntil": { "type": "string", "format": "date-time" }
         }
       },
       "subscription_TokenBalanceView": {
         "type": "object",
         "properties": {
-          "userId": {
-            "type": "string"
-          },
-          "availableTokens": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "reservedTokens": {
-            "type": "integer",
-            "format": "int32"
-          }
+          "userId": { "type": "string" },
+          "availableTokens": { "type": "integer", "format": "int32" },
+          "reservedTokens": { "type": "integer", "format": "int32" }
+        }
+      },
+      "subscription_CreateTokenReservationRequest": {
+        "type": "object",
+        "properties": {
+          "operation": { "$ref": "#/components/schemas/subscription_TokenOperation" },
+          "externalOperationId": { "type": "string", "nullable": true }
+        },
+        "required": ["operation"]
+      },
+      "subscription_TokenReservationResponse": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "format": "uuid" },
+          "userId": { "type": "string" },
+          "operation": { "$ref": "#/components/schemas/subscription_TokenOperation" },
+          "tokens": { "type": "integer", "format": "int32" },
+          "status": { "type": "string", "enum": ["RESERVED", "CONSUMED", "RELEASED"] },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "subscription_TokenReservationErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string", "enum": ["INSUFFICIENT_TOKENS", "OPERATION_NOT_ALLOWED", "PLAN_NOT_FOUND", "SUBSCRIPTION_EXPIRED"] },
+          "message": { "type": "string" }
         }
       },
       "ai_ClassificationResult": {
         "type": "object",
         "properties": {
-          "label": {
-            "type": "string"
-          },
-          "category": {
-            "type": "string"
-          },
-          "confidence": {
-            "type": "number",
-            "format": "double"
-          },
-          "categoryConfidence": {
-            "type": "number",
-            "format": "double"
-          },
-          "top3": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ai_TopPrediction"
-            }
-          }
+          "label": { "type": "string" },
+          "category": { "type": "string" },
+          "confidence": { "type": "number", "format": "double" },
+          "categoryConfidence": { "type": "number", "format": "double" },
+          "top3": { "type": "array", "items": { "$ref": "#/components/schemas/ai_TopPrediction" } }
         }
       },
       "ai_TopPrediction": {
         "type": "object",
         "properties": {
-          "label": {
-            "type": "string"
-          },
-          "confidence": {
-            "type": "number",
-            "format": "double"
+          "label": { "type": "string" },
+          "confidence": { "type": "number", "format": "double" }
+        }
+      },
+      "watermark_EmbedBody": {
+        "type": "object",
+        "properties": {
+          "image": { "type": "string", "format": "binary", "title": "Image", "description": "PNG image" },
+          "text": { "type": "string", "title": "Text", "description": "Watermark payload (max 4096 bytes UTF-8)" }
+        },
+        "required": ["image", "text"],
+        "title": "Body_embed_api_watermark_embed_post"
+      },
+      "watermark_ImageBody": {
+        "type": "object",
+        "properties": {
+          "image": { "type": "string", "format": "binary", "title": "Image" }
+        },
+        "required": ["image"]
+      },
+      "watermark_DetectResponse": {
+        "type": "object",
+        "properties": {
+          "watermarked": { "type": "boolean" },
+          "ownerIdentity": { "type": "string", "nullable": true },
+          "version": { "type": "integer", "nullable": true, "description": "1 when watermarked, otherwise null" },
+          "lengthBits": { "type": "integer", "nullable": true }
+        },
+        "required": ["watermarked"]
+      },
+      "watermark_ExtractResponse": {
+        "type": "object",
+        "properties": {
+          "ownerIdentity": { "type": "string" },
+          "text": { "type": "string" }
+        },
+        "required": ["ownerIdentity", "text"]
+      },
+      "watermark_CapacityResponse": {
+        "type": "object",
+        "properties": {
+          "maxTextBytes": { "type": "integer" },
+          "minImageWidth": { "type": "integer" },
+          "minImageHeight": { "type": "integer" },
+          "imageWidth": { "type": "integer" },
+          "imageHeight": { "type": "integer" },
+          "imageOk": { "type": "boolean" },
+          "lengthBits": { "type": "integer" }
+        }
+      },
+      "watermark_HealthResponse": {
+        "type": "object",
+        "properties": { "status": { "type": "string", "example": "UP" } }
+      },
+      "watermark_Error": {
+        "type": "object",
+        "description": "FastAPI error body. `detail` is a human-readable string, or an object such as {\"error\": \"...\"} for auth failures.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "object" }
+            ]
           }
         }
       },
-      "watermark_Body_capacity_api_watermark_capacity_post": {
-        "properties": {
-          "image": {
-            "type": "string",
-            "format": "binary",
-            "title": "Image"
-          }
-        },
-        "type": "object",
-        "required": [
-          "image"
-        ],
-        "title": "Body_capacity_api_watermark_capacity_post"
-      },
-      "watermark_Body_detect_api_watermark_detect_post": {
-        "properties": {
-          "image": {
-            "type": "string",
-            "format": "binary",
-            "title": "Image"
-          }
-        },
-        "type": "object",
-        "required": [
-          "image"
-        ],
-        "title": "Body_detect_api_watermark_detect_post"
-      },
-      "watermark_Body_embed_api_watermark_embed_post": {
-        "properties": {
-          "image": {
-            "type": "string",
-            "format": "binary",
-            "title": "Image"
-          },
-          "text": {
-            "type": "string",
-            "title": "Text"
-          }
-        },
-        "type": "object",
-        "required": [
-          "image",
-          "text"
-        ],
-        "title": "Body_embed_api_watermark_embed_post"
-      },
-      "watermark_Body_extract_api_watermark_extract_post": {
-        "properties": {
-          "image": {
-            "type": "string",
-            "format": "binary",
-            "title": "Image"
-          }
-        },
-        "type": "object",
-        "required": [
-          "image"
-        ],
-        "title": "Body_extract_api_watermark_extract_post"
-      },
-      "watermark_Body_visualize_endpoint_api_watermark_visualize_post": {
-        "properties": {
-          "image": {
-            "type": "string",
-            "format": "binary",
-            "title": "Image"
-          }
-        },
-        "type": "object",
-        "required": [
-          "image"
-        ],
-        "title": "Body_visualize_endpoint_api_watermark_visualize_post"
-      },
       "watermark_HTTPValidationError": {
+        "type": "object",
         "properties": {
           "detail": {
-            "items": {
-              "$ref": "#/components/schemas/watermark_ValidationError"
-            },
             "type": "array",
+            "items": { "$ref": "#/components/schemas/watermark_ValidationError" },
             "title": "Detail"
           }
         },
-        "type": "object",
         "title": "HTTPValidationError"
       },
       "watermark_ValidationError": {
+        "type": "object",
         "properties": {
           "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
             "type": "array",
+            "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] },
             "title": "Location"
           },
-          "msg": {
-            "type": "string",
-            "title": "Message"
-          },
-          "type": {
-            "type": "string",
-            "title": "Error Type"
-          }
+          "msg": { "type": "string", "title": "Message" },
+          "type": { "type": "string", "title": "Error Type" }
         },
-        "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError"
+      },
+      "SpringErrorBody": {
+        "type": "object",
+        "description": "Spring Boot default error response.",
+        "properties": {
+          "timestamp": { "type": "string", "format": "date-time" },
+          "status": { "type": "integer" },
+          "error": { "type": "string" },
+          "path": { "type": "string" }
+        }
       }
     },
     "securitySchemes": {
@@ -968,23 +886,5 @@
         "bearerFormat": "JWT"
       }
     }
-  },
-  "tags": [
-    {
-      "name": "auth: Authentication",
-      "description": "Authentication and registration API"
-    },
-    {
-      "name": "subscription: Subscription Query",
-      "description": "API for querying user subscriptions and plans"
-    },
-    {
-      "name": "subscription: Subscription Status",
-      "description": "Service health and status API"
-    },
-    {
-      "name": "ai: Classification",
-      "description": "AI Image Classification API"
-    }
-  ]
+  }
 }
