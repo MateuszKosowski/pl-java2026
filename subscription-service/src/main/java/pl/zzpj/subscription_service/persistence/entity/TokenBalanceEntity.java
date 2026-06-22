@@ -10,38 +10,34 @@ import pl.zzpj.subscription_service.domain.token.TokenBalance;
 @Table(name = "token_balances", schema = "subscription_schema")
 public class TokenBalanceEntity {
 
-    @Id
-    @Column(name = "user_id", nullable = false)
-    private String userId;
+  @Id
+  @Column(name = "user_id", nullable = false)
+  private String userId;
 
-    @Column(name = "available_tokens", nullable = false)
-    private int availableTokens;
+  @Column(name = "available_tokens", nullable = false)
+  private int availableTokens;
 
-    @Column(name = "reserved_tokens", nullable = false)
-    private int reservedTokens;
+  @Column(name = "reserved_tokens", nullable = false)
+  private int reservedTokens;
 
-    protected TokenBalanceEntity() {
-    }
+  protected TokenBalanceEntity() {}
 
-    public TokenBalanceEntity(String userId, int availableTokens, int reservedTokens) {
-        this.userId = userId;
-        this.availableTokens = availableTokens;
-        this.reservedTokens = reservedTokens;
-    }
+  public TokenBalanceEntity(String userId, int availableTokens, int reservedTokens) {
+    this.userId = userId;
+    this.availableTokens = availableTokens;
+    this.reservedTokens = reservedTokens;
+  }
 
-    public static TokenBalanceEntity from(TokenBalance tokenBalance) {
-        return new TokenBalanceEntity(
-                tokenBalance.userId(),
-                tokenBalance.availableTokens(),
-                tokenBalance.reservedTokens()
-        );
-    }
+  public static TokenBalanceEntity from(TokenBalance tokenBalance) {
+    return new TokenBalanceEntity(
+        tokenBalance.userId(), tokenBalance.availableTokens(), tokenBalance.reservedTokens());
+  }
 
-    public TokenBalance toDomain() {
-        return new TokenBalance(userId, availableTokens, reservedTokens);
-    }
+  public TokenBalance toDomain() {
+    return new TokenBalance(userId, availableTokens, reservedTokens);
+  }
 
-    public String getUserId() {
-        return userId;
-    }
+  public String getUserId() {
+    return userId;
+  }
 }

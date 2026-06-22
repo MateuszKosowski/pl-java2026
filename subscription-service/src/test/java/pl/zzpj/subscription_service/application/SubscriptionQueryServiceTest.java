@@ -3,6 +3,7 @@ package pl.zzpj.subscription_service.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
@@ -26,74 +27,95 @@ import pl.zzpj.subscription_service.persistence.SubscriptionStore;
 @ExtendWith(MockitoExtension.class)
 class SubscriptionQueryServiceTest {
 
-    @Mock
-    private SubscriptionCatalog subscriptionCatalog;
+  @Mock private SubscriptionCatalog subscriptionCatalog;
 
-    @Mock
-    private SubscriptionStore subscriptionStore;
+  @Mock private SubscriptionStore subscriptionStore;
 
-    private final Instant fixedInstant = Instant.parse("2026-06-15T12:00:00Z");
-    private final Clock clock = Clock.fixed(fixedInstant, ZoneId.of("UTC"));
+  private final Instant fixedInstant = Instant.parse("2026-06-15T12:00:00Z");
+  private final Clock clock = Clock.fixed(fixedInstant, ZoneId.of("UTC"));
 
-    private SubscriptionQueryService subscriptionQueryService;
+  private SubscriptionQueryService subscriptionQueryService;
 
-    @BeforeEach
-    void setUp() {
-        subscriptionQueryService = new SubscriptionQueryService(
-            subscriptionCatalog,
-            subscriptionStore,
-            clock
-        );
-    }
+  @BeforeEach
+  void setUp() {
+    subscriptionQueryService =
+        new SubscriptionQueryService(subscriptionCatalog, subscriptionStore, clock);
+  }
 
-    @Test
-    void shouldReturnAvailablePlansSortedByOrdinal() {
-        SubscriptionPlan free = new SubscriptionPlan(
-            PlanCode.FREE,
-            50,
-            Set.of()
-        );
-        SubscriptionPlan pro = new SubscriptionPlan(
-            PlanCode.PRO,
-            2500,
-            Set.of()
-        );
+  @Test
+  void shouldReturnAvailablePlansSortedByOrdinal() {
+    SubscriptionPlan free = new SubscriptionPlan(PlanCode.FREE, 50, Set.of());
+    SubscriptionPlan pro = new SubscriptionPlan(PlanCode.PRO, 2500, Set.of());
 
-        when(subscriptionCatalog.plans()).thenReturn(
-            Map.of(PlanCode.FREE, free, PlanCode.PRO, pro)
-        );
+    when(subscriptionCatalog.plans()).thenReturn(Map.of(PlanCode.FREE, free, PlanCode.PRO, pro));
 
-        var plans = subscriptionQueryService.availablePlans();
+    var plans = subscriptionQueryService.availablePlans();
 
-        assertEquals(2, plans.size());
-        assertEquals(PlanCode.FREE, plans.get(0).code());
-        assertEquals(PlanCode.PRO, plans.get(1).code());
-    }
+    assertEquals(2, plans.size());
+    assertEquals(PlanCode.FREE, plans.get(0).code());
+    assertEquals(PlanCode.PRO, plans.get(1).code());
+  }
 
-    @Test
-    void shouldReturnStateForUser() {
-        String userId = "user123";
-        SubscriptionPlan free = new SubscriptionPlan(
-            PlanCode.FREE,
-            50,
-            Set.of()
-        );
-        when(subscriptionCatalog.findPlan(PlanCode.FREE)).thenReturn(
-            Optional.of(free)
-        );
+  @Test
+  void shouldReturnStateForUser() {
+    String userId = "user123";
+    SubscriptionPlan free = new SubscriptionPlan(PlanCode.FREE, 50, Set.of());
+    when(subscriptionCatalog.findPlan(PlanCode.FREE)).thenReturn(Optional.of(free));
 
-        UserSubscriptionState expectedState = new UserSubscriptionState(
+    UserSubscriptionState expectedState =
+        new UserSubscriptionState(
             new ActiveSubscription(userId, PlanCode.FREE, fixedInstant, null),
-            new TokenBalance(userId, 50, 0)
-        );
-        when(subscriptionStore.getOrCreate(eq(userId), any())).thenReturn(
-            expectedState
-        );
+            new TokenBalance(userId, 50, 0));
+    when(subscriptionStore.getOrCreate(eq(userId), any())).thenReturn(expectedState);
 
-        UserSubscriptionState actualState = subscriptionQueryService.stateFor(
-            userId
-        );
+    UserSubscriptionState actualState = subscriptionQueryService.stateFor(userId);
 
-        assertEquals(expectedState, actualState);
-    }
+    assertEquals(expectedState, actualState);
+  }
+
+  @Test
+  void shouldResetExpiredPaidPlanToFreeWhenReservationsAreSettled() {
+    String userId = "user123";
+    SubscriptionPlan free = new SubscriptionPlan(PlanCode.FREE, 50, Set.of());
+    when(subscriptionCatalog.findPlan(PlanCode.FREE)).thenReturn(Optional.of(free));
+
+    UserSubscriptionState expiredState =
+        new UserSubscriptionState(
+            new ActiveSubscription(
+                userId,
+                PlanCode.PRO,
+                fixedInstant.minusSeconds(2_000_000),
+                fixedInstant.minusSeconds(1)),
+            new TokenBalance(userId, 1234, 0));
+    when(subscriptionStore.getOrCreate(eq(userId), any())).thenReturn(expiredState);
+    when(subscriptionStore.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    UserSubscriptionState actualState = subscriptionQueryService.stateFor(userId);
+
+    assertEquals(PlanCode.FREE, actualState.subscription().planCode());
+    assertEquals(50, actualState.tokenBalance().availableTokens());
+    assertEquals(0, actualState.tokenBalance().reservedTokens());
+    verify(subscriptionStore).save(actualState);
+  }
+
+  @Test
+  void shouldWaitForReservedTokensBeforeResettingExpiredPlan() {
+    String userId = "user123";
+    SubscriptionPlan free = new SubscriptionPlan(PlanCode.FREE, 50, Set.of());
+    when(subscriptionCatalog.findPlan(PlanCode.FREE)).thenReturn(Optional.of(free));
+
+    UserSubscriptionState expiredState =
+        new UserSubscriptionState(
+            new ActiveSubscription(
+                userId,
+                PlanCode.PRO,
+                fixedInstant.minusSeconds(2_000_000),
+                fixedInstant.minusSeconds(1)),
+            new TokenBalance(userId, 1234, 3));
+    when(subscriptionStore.getOrCreate(eq(userId), any())).thenReturn(expiredState);
+
+    UserSubscriptionState actualState = subscriptionQueryService.stateFor(userId);
+
+    assertEquals(expiredState, actualState);
+  }
 }

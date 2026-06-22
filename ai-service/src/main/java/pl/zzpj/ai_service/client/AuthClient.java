@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 @FeignClient(name = "auth-server")
 public interface AuthClient {
 
-    @PostMapping("/auth/validate")
-    boolean validateToken(@RequestParam("token") String token);
+  @PostMapping("/auth/validate")
+  boolean validateToken(@RequestParam("token") String token);
 }

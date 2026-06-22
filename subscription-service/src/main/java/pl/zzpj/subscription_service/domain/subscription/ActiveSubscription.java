@@ -4,17 +4,18 @@ import java.time.Instant;
 import java.util.Objects;
 
 public record ActiveSubscription(
-        String userId,
-        PlanCode planCode,
-        Instant activeFrom,
-        Instant activeUntil
-) {
+    String userId, PlanCode planCode, Instant activeFrom, Instant activeUntil) {
 
-    public ActiveSubscription {
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("userId must not be blank");
-        }
-        Objects.requireNonNull(planCode, "planCode must not be null");
-        Objects.requireNonNull(activeFrom, "activeFrom must not be null");
+  public ActiveSubscription {
+    if (userId == null || userId.isBlank()) {
+      throw new IllegalArgumentException("userId must not be blank");
     }
+    Objects.requireNonNull(planCode, "planCode must not be null");
+    Objects.requireNonNull(activeFrom, "activeFrom must not be null");
+  }
+
+  public boolean isExpiredAt(Instant instant) {
+    Objects.requireNonNull(instant, "instant must not be null");
+    return activeUntil != null && !activeUntil.isAfter(instant);
+  }
 }

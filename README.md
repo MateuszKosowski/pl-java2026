@@ -1,5 +1,20 @@
 # StegoCloud
 
+## Spis treści
+- [Członkowie grupy](#czlonkowie-grupy)
+- [Opis projektu](#opis-projektu)
+- [Architektura](#architektura)
+- [Główne zasady biznesowe](#glowne-zasady-biznesowe)
+- [Mechanizmy Javy 21](#mechanizmy-javy-21)
+- [Konta demo](#konta-demo)
+- [Konfiguracja](#konfiguracja)
+- [Uruchomienie](#uruchomienie)
+- [Linki](#linki)
+- [Dokumentacja API (OpenAPI)](#dokumentacja-api-openapi)
+- [Przydatne endpointy](#przydatne-endpointy)
+- [SonarQube](#sonarqube)
+- [Uwagi techniczne](#uwagi-techniczne)
+
 ## Czlonkowie grupy
 
 251558, 251554, 251598, 251620, 251606, 247774
@@ -40,11 +55,21 @@ System uzywa planow subskrypcji i tokenow. Kazda platna operacja najpierw rezerw
 | `EMBED_1024` | 8 |
 | `AI_CLASSIFICATION` | 2 |
 
-| Plan | Tokeny demo | Dozwolone operacje |
+| Plan | Tokeny / miesiac | Dozwolone operacje |
 |---|---:|---|
 | `FREE` | 50 | `CAPACITY_CHECK`, `DETECT`, `EMBED_768` |
 | `STANDARD` | 500 | `CAPACITY_CHECK`, `DETECT`, `EXTRACT`, `VISUALIZE`, `EMBED_768`, `EMBED_1024` |
 | `PRO` | 2500 | wszystkie operacje, wlacznie z `AI_CLASSIFICATION` |
+
+Cykl zycia subskrypcji:
+
+- dozwolone sa wylacznie przejscia `FREE -> STANDARD`, `FREE -> PRO` i `STANDARD -> PRO`,
+- downgrade oraz ponowny zakup aktywnego planu sa blokowane po stronie backendu,
+- platny plan jest wazny przez jeden miesiac od daty zakupu lub upgrade'u,
+- upgrade rozpoczyna nowy miesieczny okres i dodaje pelna pule tokenow nowego planu do aktualnego salda,
+- po wygasnieciu plan wraca do `FREE`, a saldo jest resetowane do 50 tokenow,
+- rezerwacje rozpoczete przed wygasnieciem moga zostac rozliczone, ale wygasly plan nie pozwala rozpoczynac nowych operacji,
+- finalizacja platnosci jest idempotentna i wymaga wlasciciela danej sesji platniczej.
 
 Zasady watermarkingu:
 
@@ -55,6 +80,7 @@ Zasady watermarkingu:
 - klasyfikacja AI jest opcjonalna i wykonywana tylko wtedy, gdy plan oraz saldo tokenow na to pozwalaja,
 - zwykly uzytkownik moze odczytywac tylko swoje watermarki,
 - administrator moze wykonywac detect/extract/visualize dla kazdego obrazu.
+- GUI przyjmuje obrazy o maksymalnym rozmiarze 20 MB i pokazuje date waznosci aktywnego planu.
 
 ## Mechanizmy Javy 21
 
@@ -164,6 +190,18 @@ docker compose down -v
 
 ## Dokumentacja API (OpenAPI)
 
+### Skonsolidowana dokumentacja
+W głównym katalogu znajduje się plik `stegocloud-openapi.json` (połączone API wszystkich serwisów) oraz `api-docs.html` (interaktywny viewer).
+
+Ze względu na zabezpieczenia przeglądarek (CORS), plik `api-docs.html` musi być uruchomiony przez serwer HTTP.
+
+**Szybkie uruchomienie (Python):**
+```bash
+python3 -m http.server 8000
+```
+Następnie otwórz: [http://localhost:8000/api-docs.html](http://localhost:8000/api-docs.html)
+
+### Dokumentacja poszczególnych serwisów
 | Usluga | URL |
 |---|---|
 | Auth Server | http://localhost:8081/swagger-ui/index.html |
@@ -186,6 +224,10 @@ Subscription:
 GET  /api/subscriptions/plans
 GET  /api/subscriptions/me
 GET  /api/subscriptions/me/tokens
+POST /api/payments/mock/sessions
+POST /api/payments/mock/sessions/{sessionId}/succeed
+POST /api/payments/mock/sessions/{sessionId}/fail
+POST /api/payments/mock/sessions/{sessionId}/cancel
 POST /api/tokens/reservations
 POST /api/tokens/reservations/{reservationId}/consume
 POST /api/tokens/reservations/{reservationId}/release
