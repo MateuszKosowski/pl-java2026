@@ -1,0 +1,44 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam actor {
+  BackgroundColor LightYellow
+  BorderColor Orange
+}
+skinparam usecase {
+  BackgroundColor LightCyan
+  BorderColor DarkCyan
+}
+
+actor "Użytkownik" as user
+actor "Administrator" as admin
+actor "Bramka Płatności" as payment
+
+rectangle "System StegoCloud" {
+  usecase "Sprawdzanie pojemności\n(Capacity Check)" as UC_capacity
+  usecase "Osadzanie znaku wodnego\n(Embed)" as UC_embed
+  usecase "Wykrywanie znaku wodnego\n(Detect)" as UC_detect
+  usecase "Wyodrębnianie tekstu\n(Extract)" as UC_extract
+  usecase "Wizualizacja różnic\n(Visualize)" as UC_visualize
+  usecase "Klasyfikacja obrazu AI\n(MobileNetV2)" as UC_ai
+  
+  usecase "Podgląd salda i subskrypcji\n(Get Subscription/Tokens)" as UC_status
+  usecase "Zakup / Upgrade planu\n(Upgrade Subscription)" as UC_upgrade
+  usecase "Procesowanie płatności\n(Process Payment)" as UC_payment_proc
+  
+  UC_embed .up.> UC_ai : <<extend>>
+  UC_upgrade .right.> UC_payment_proc : <<include>>
+}
+
+user --> UC_capacity
+user --> UC_embed
+user --> UC_detect
+user --> UC_extract : własne obrazy
+user --> UC_visualize
+user --> UC_status
+user --> UC_upgrade
+
+admin -up-> UC_extract : wszystkie obrazy
+
+payment --> UC_payment_proc
+@enduml

@@ -1,0 +1,83 @@
+@startuml
+autonumber
+skinparam BoxBackgroundColor LightGray
+skinparam BoxBorderColor Gray
+skinparam ParticipantBackgroundColor LightCyan
+skinparam ParticipantBorderColor DarkCyan
+skinparam ActorBackgroundColor LightYellow
+skinparam ActorBorderColor Orange
+
+actor "Użytkownik (GUI)" as gui
+participant "Nginx Router" as nginx
+participant "Subscription Service\n(Java/Spring)" as sub
+database "Baza Danych" as db
+participant "System Płatności\n(Mock Payment)" as pm
+
+gui -> nginx : POST /api/payments/mock/sessions\n(JWT, targetPlan: STANDARD)
+activate nginx
+nginx -> sub : /api/payments/mock/sessions
+activate sub
+
+sub -> sub : Walidacja reguł biznesowych\n(brak downgrade'u, aktywny plan)
+sub -> db : Zapis nowej sesji płatniczej\n(status: PENDING, targetPlan)
+activate db
+db --> sub : sesja zapisana
+deactivate db
+
+sub --> nginx : 201 Created (sessionId)
+deactivate sub
+nginx --> gui : Zwrócenie sessionId i URL bramki
+deactivate nginx
+
+gui -> pm : Przekierowanie na stronę płatności\n(URL z sessionId)
+activate pm
+gui -> pm : Użytkownik klika "Zatwierdź płatność"
+pm -> nginx : POST /api/payments/mock/sessions/{sessionId}/succeed\n(JWT bramki/użytkownika)
+activate nginx
+nginx -> sub : /api/payments/mock/sessions/{id}/succeed
+activate sub
+
+sub -> db : Pobranie sesji płatniczej po ID
+activate db
+db --> sub : dane sesji (status PENDING)
+deactivate db
+
+sub -> sub : Weryfikacja właściciela sesji\n(Zabezpieczenie przed przejęciem)
+
+sub -> db : Aktualizacja statusu sesji na SUCCEEDED
+activate db
+db --> sub : zaktualizowano
+deactivate db
+
+sub -> db : Aktualizacja planu subskrypcji użytkownika\n(PlanCode, ważność + 1 miesiąc)
+activate db
+db --> sub : zapisano subskrypcję
+deactivate db
+
+sub -> db : Reset/Zasilenie salda tokenów\n(+500 tokenów dla STANDARD)
+activate db
+db --> sub : zaktualizowano saldo
+deactivate db
+
+sub --> nginx : 200 OK (Payment successful)
+deactivate sub
+nginx --> pm : 200 OK
+deactivate nginx
+
+pm --> gui : Przekierowanie zwrotne do aplikacji (Success page)
+deactivate pm
+
+gui -> nginx : GET /api/subscriptions/me\nGET /api/subscriptions/me/tokens
+activate nginx
+nginx -> sub : Obsługa zapytań o stan konta
+activate sub
+sub -> db : Odczyt aktualnej subskrypcji i salda
+activate db
+db --> sub : dane subskrypcji i salda
+deactivate db
+sub --> nginx : 200 OK (Zaktualizowany plan i saldo)
+deactivate sub
+nginx --> gui : Wyświetlenie nowego planu (STANDARD) i 500 tokenów
+deactivate nginx
+
+@enduml

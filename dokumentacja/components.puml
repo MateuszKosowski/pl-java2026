@@ -1,0 +1,74 @@
+@startuml
+skinparam componentStyle uml2
+skinparam component {
+  BackgroundColor LightYellow
+  BorderColor Orange
+}
+skinparam interface {
+  BackgroundColor LightCyan
+  BorderColor DarkCyan
+}
+
+package "Warstwa Prezentacji" {
+  [Svelte SPA (GUI)] as gui
+}
+
+package "Brama i Wsparcie" {
+  [Nginx Router (Gateway)] as nginx
+  interface "Eureka Service Registry" as registry_api
+  [Eureka Discovery Server] as discovery
+  discovery -up- registry_api
+}
+
+package "Mikroserwis Autoryzacji (auth-server)" {
+  [Auth Controller] as auth_ctrl
+  [JWT Service] as jwt_svc
+  [Registration Service] as reg_svc
+  auth_ctrl --> jwt_svc
+  auth_ctrl --> reg_svc
+}
+
+package "Mikroserwis Subskrypcji (subscription-service)" {
+  [Token Reservation Controller] as reserve_ctrl
+  [Subscription Query Controller] as query_ctrl
+  [Mock Payment Controller] as pay_ctrl
+  [Token Reservation Policy] as policy
+  [Payment Application Service] as pay_app_svc
+  
+  reserve_ctrl --> policy
+  pay_ctrl --> pay_app_svc
+}
+
+package "Mikroserwis Watermarkingu (watermark-service-py)" {
+  [Watermark Router] as wm_router
+  [Watermark Engine] as wm_eng
+  [Crypto Manager] as crypto
+  [Subscription Client] as sub_client
+  
+  wm_router --> wm_eng
+  wm_router --> crypto
+  wm_router --> sub_client
+}
+
+package "Mikroserwis Klasyfikacji AI (ai-service)" {
+  [AI Controller] as ai_ctrl
+  [ONNX Runtime Classifier] as ai_classifier
+  ai_ctrl --> ai_classifier
+}
+
+gui --> nginx : HTTP REST / JSON
+nginx --> auth_ctrl : /auth/*
+nginx --> reserve_ctrl : /api/tokens/*
+nginx --> query_ctrl : /api/subscriptions/*
+nginx --> pay_ctrl : /api/payments/*
+nginx --> wm_router : /api/watermark/*
+
+wm_router -down-> ai_ctrl : HTTP REST (Klasyfikacja)
+sub_client -down-> reserve_ctrl : HTTP REST (Rezerwacja tokenów)
+
+auth_ctrl ..> registry_api : rejestracja
+reserve_ctrl ..> registry_api : rejestracja
+wm_router ..> registry_api : rejestracja
+ai_ctrl ..> registry_api : rejestracja
+
+@enduml

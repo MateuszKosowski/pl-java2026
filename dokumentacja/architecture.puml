@@ -1,0 +1,59 @@
+@startuml
+skinparam componentStyle uml2
+skinparam database {
+  BackgroundColor LightCyan
+  BorderColor DarkCyan
+}
+skinparam component {
+  BackgroundColor LightYellow
+  BorderColor Orange
+}
+skinparam node {
+  BackgroundColor LightGray
+  BorderColor Black
+}
+
+node "Środowisko Klienta" {
+  [Svelte GUI] as gui <<Frontend>>
+}
+
+node "Brama i Wsparcie" {
+  [Nginx (Gateway)] as nginx <<Nginx>>
+  [Eureka Discovery] as eureka <<Netflix Eureka>>
+  [Config Server] as config_srv <<Spring Cloud Config>>
+}
+
+node "Mikroserwisy Backendowe" {
+  [Auth Server] as auth <<Spring Boot>>
+  [Subscription Service] as sub <<Spring Boot>>
+  [Watermark Service] as wm <<FastAPI (Python)>>
+  [AI Service] as ai <<Spring Boot + ONNX>>
+}
+
+database "PostgreSQL" {
+  [auth_schema] as db_auth
+  [subscription_schema] as db_sub
+}
+
+gui --> nginx : HTTP
+nginx --> auth : /auth/*
+nginx --> sub : /api/subscriptions/*\n/api/payments/*\n/api/tokens/*
+nginx --> wm : /api/watermark/*
+
+auth -up-> eureka : Rejestruje/Odkrywa
+sub -up-> eureka : Rejestruje/Odkrywa
+wm -up-> eureka : Rejestruje/Odkrywa
+ai -up-> eureka : Rejestruje/Odkrywa
+
+auth --> config_srv : Pobiera config
+sub --> config_srv : Pobiera config
+wm --> config_srv : Pobiera config
+ai --> config_srv : Pobiera config
+
+auth --> db_auth : JDBC (schema auth)
+sub --> db_sub : JDBC (schema subscription)
+
+wm --> sub : Rezerwacja/Konsumpcja tokenów
+wm --> ai : Wywołanie klasyfikacji (REST)
+wm ..> auth : Walidacja JWT (POST /auth/validate)
+@enduml
