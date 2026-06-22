@@ -1,4 +1,5 @@
 @startuml
+skinparam dpi 150
 skinparam componentStyle uml2
 skinparam component {
   BackgroundColor LightYellow
