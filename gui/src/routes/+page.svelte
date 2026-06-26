@@ -1,5 +1,26 @@
 <script>
     import { onMount } from "svelte";
+    import "./watermark-console.css";
+    import { readRole } from "$lib/watermark-console/auth";
+    import AccountPanel from "$lib/watermark-console/components/AccountPanel.svelte";
+    import DetectPanel from "$lib/watermark-console/components/DetectPanel.svelte";
+    import ExtractPanel from "$lib/watermark-console/components/ExtractPanel.svelte";
+    import PricingPanel from "$lib/watermark-console/components/PricingPanel.svelte";
+    import Tabs from "$lib/watermark-console/components/Tabs.svelte";
+    import VisualizePanel from "$lib/watermark-console/components/VisualizePanel.svelte";
+    import {
+        canUpgrade,
+        fileSignature,
+        operationCost,
+        operationName,
+        utf8ByteLength,
+    } from "$lib/watermark-console/domain";
+    import { createApiClient, readError } from "$lib/watermark-console/http";
+    import {
+        maxImageSizeBytes,
+        maxImageSizeLabel,
+        tabs,
+    } from "$lib/watermark-console/config";
 
     let token = $state("");
     let activeTab = $state("embed");
@@ -13,38 +34,6 @@
     let paymentSession = $state(null);
     let paymentProcessing = $state(false);
     let paymentError = $state("");
-
-    const tabs = [
-        { id: "embed", label: "Embed" },
-        { id: "detect", label: "Detect" },
-        { id: "extract", label: "Extract" },
-        { id: "visualize", label: "Visualize" },
-        { id: "pricing", label: "Pricing" },
-    ];
-
-    const planOrder = ["FREE", "STANDARD", "PRO"];
-    const maxImageSizeBytes = 20_000_000;
-    const maxImageSizeLabel = "20 MB";
-
-    const operationCosts = {
-        CAPACITY_CHECK: 0,
-        DETECT: 1,
-        EXTRACT: 2,
-        VISUALIZE: 3,
-        EMBED_768: 5,
-        EMBED_1024: 8,
-        AI_CLASSIFICATION: 2,
-    };
-
-    const operationLabels = {
-        CAPACITY_CHECK: "Capacity check",
-        DETECT: "Detect",
-        EXTRACT: "Extract",
-        VISUALIZE: "Visualize",
-        EMBED_768: "Embed basic",
-        EMBED_1024: "Embed large",
-        AI_CLASSIFICATION: "AI classification",
-    };
 
     let embedFiles = $state();
     let watermarkText = $state("");
@@ -74,7 +63,10 @@
     let visualizeImageUrl = $state(null);
     let visualizeError = $state("");
 
-    const textEncoder = new TextEncoder();
+    const api = createApiClient(
+        () => token,
+        () => logout(),
+    );
 
     onMount(async () => {
         token = localStorage.getItem("jwt_token") ?? "";
@@ -91,28 +83,13 @@
         window.location.href = "/login";
     }
 
-    function readRole(jwt) {
-        try {
-            const parts = jwt.split(".");
-            if (parts.length < 2) return "USER";
-            const segment = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-            const padded = segment + "=".repeat((4 - (segment.length % 4)) % 4);
-            const payload = JSON.parse(atob(padded));
-            if (payload.role) return String(payload.role).toUpperCase();
-            if (payload.sub === "admin" && payload.userId === 1) return "ADMIN";
-        } catch {
-            return "USER";
-        }
-        return "USER";
-    }
-
     async function loadAccount() {
         accountLoading = true;
         accountError = "";
         try {
-            plans = await apiGet("/api/subscriptions/plans");
-            subscription = await apiGet("/api/subscriptions/me");
-            tokenBalance = await apiGet("/api/subscriptions/me/tokens");
+            plans = await api.get("/api/subscriptions/plans");
+            subscription = await api.get("/api/subscriptions/me");
+            tokenBalance = await api.get("/api/subscriptions/me/tokens");
         } catch (error) {
             accountError =
                 error instanceof Error
@@ -125,46 +102,17 @@
 
     async function refreshTokens() {
         try {
-            tokenBalance = await apiGet("/api/subscriptions/me/tokens");
+            tokenBalance = await api.get("/api/subscriptions/me/tokens");
         } catch {
             accountError = "Nie udało się odświeżyć salda tokenów.";
         }
-    }
-
-    async function apiGet(url) {
-        const response = await fetch(url, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (response.status === 401) {
-            logout();
-            throw new Error("Sesja wygasła.");
-        }
-        if (!response.ok) throw new Error(await readError(response));
-        return response.json();
-    }
-
-    async function apiPost(url, body) {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(body),
-        });
-        if (response.status === 401) {
-            logout();
-            throw new Error("Sesja wygasła.");
-        }
-        if (!response.ok) throw new Error(await readError(response));
-        return response.json();
     }
 
     async function initiatePayment(targetPlan) {
         paymentError = "";
         paymentProcessing = true;
         try {
-            paymentSession = await apiPost("/api/payments/mock/sessions", {
+            paymentSession = await api.post("/api/payments/mock/sessions", {
                 targetPlan,
             });
             activeTab = "pricing"; // Ensure we stay on pricing to see the session
@@ -179,18 +127,7 @@
     }
 
     function canUpgradeTo(targetPlan) {
-        return (
-            planOrder.indexOf(targetPlan) >
-            planOrder.indexOf(subscription?.planCode)
-        );
-    }
-
-    function formatPlanExpiry(activeUntil) {
-        if (!activeUntil) return "No expiration";
-        return new Intl.DateTimeFormat("pl-PL", {
-            dateStyle: "medium",
-            timeStyle: "short",
-        }).format(new Date(activeUntil));
+        return canUpgrade(subscription?.planCode, targetPlan);
     }
 
     async function completePayment(outcome) {
@@ -198,7 +135,7 @@
         paymentError = "";
         paymentProcessing = true;
         try {
-            paymentSession = await apiPost(
+            paymentSession = await api.post(
                 `/api/payments/mock/sessions/${paymentSession.id}/${outcome}`,
                 {},
             );
@@ -227,24 +164,12 @@
         return Boolean(plan?.allowedOperations?.includes(operation));
     }
 
-    function operationCost(operation) {
-        return operationCosts[operation] ?? 0;
-    }
-
     function availableTokens() {
         return tokenBalance?.availableTokens ?? 0;
     }
 
-    function reservedTokens() {
-        return tokenBalance?.reservedTokens ?? 0;
-    }
-
     function hasTokensFor(operation) {
         return availableTokens() >= operationCost(operation);
-    }
-
-    function operationName(operation) {
-        return operationLabels[operation] ?? operation;
     }
 
     function embedOperation() {
@@ -298,10 +223,6 @@
         return Boolean(tabStatus(tabId));
     }
 
-    function canUseOperation(operation) {
-        return !actionStatus(operation);
-    }
-
     function selectTab(tabId) {
         if (!tabDisabled(tabId)) activeTab = tabId;
     }
@@ -313,41 +234,6 @@
         if (files[0].size > maxImageSizeBytes)
             return `Wybrany obraz jest za duży. Maksymalny rozmiar pliku to ${maxImageSizeLabel}.`;
         return "";
-    }
-
-    function postImage(url, image, text) {
-        const formData = new FormData();
-        formData.append("image", image);
-        if (text !== undefined) formData.append("text", text);
-        return fetch(url, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-        });
-    }
-
-    async function readError(response) {
-        if (response.status === 413)
-            return `Wybrany obraz jest za duży. Maksymalny rozmiar pliku to ${maxImageSizeLabel}.`;
-        try {
-            const data = await response.json();
-            if (typeof data.detail === "string") return data.detail;
-            if (data.detail?.message) return data.detail.message;
-            if (data.message) return data.message;
-            if (data.error) return data.error;
-            if (data.code) return data.code;
-        } catch {
-            // fall through
-        }
-        return "Wystąpił błąd podczas przetwarzania.";
-    }
-
-    function utf8ByteLength(text) {
-        return textEncoder.encode(text).length;
-    }
-
-    function fileSignature(file) {
-        return `${file.name}|${file.size}|${file.lastModified}`;
     }
 
     async function probeCapacity() {
@@ -364,14 +250,12 @@
         capacityAbort = controller;
         capacityChecking = true;
         try {
-            const formData = new FormData();
-            formData.append("image", embedFiles[0]);
-            const response = await fetch("/api/watermark/capacity", {
-                method: "POST",
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
-                signal: controller.signal,
-            });
+            const response = await api.postImage(
+                "/api/watermark/capacity",
+                embedFiles[0],
+                undefined,
+                { signal: controller.signal },
+            );
             if (controller.signal.aborted) return;
             if (response.ok) {
                 capacity = await response.json();
@@ -447,7 +331,7 @@
         classification = null;
 
         try {
-            const response = await postImage(
+            const response = await api.postImage(
                 "/api/watermark/embed",
                 embedFiles[0],
                 watermarkText,
@@ -483,7 +367,7 @@
         detectProcessing = true;
         detectResult = null;
         try {
-            const response = await postImage(
+            const response = await api.postImage(
                 "/api/watermark/detect",
                 detectFiles[0],
             );
@@ -517,7 +401,7 @@
         extractProcessing = true;
         extractResult = null;
         try {
-            const response = await postImage(
+            const response = await api.postImage(
                 "/api/watermark/extract",
                 extractFiles[0],
             );
@@ -557,7 +441,7 @@
         visualizeProcessing = true;
         visualizeImageUrl = null;
         try {
-            const response = await postImage(
+            const response = await api.postImage(
                 "/api/watermark/visualize",
                 visualizeFiles[0],
             );
@@ -601,57 +485,16 @@
         <button class="btn btn-outline compact" onclick={logout}>Logout</button>
     </header>
 
-    <section class="account-panel">
-        {#if accountLoading}
-            <div class="metric">Loading subscription data...</div>
-        {:else if accountError}
-            <div class="alert alert-error">{accountError}</div>
-        {:else}
-            <div class="metric">
-                <span>Plan</span>
-                <strong>{subscription?.planCode ?? "UNKNOWN"}</strong>
-            </div>
-            <div class="metric">
-                <span>Available tokens</span>
-                <strong>{availableTokens()}</strong>
-            </div>
-            <div class="metric">
-                <span>Reserved tokens</span>
-                <strong>{reservedTokens()}</strong>
-            </div>
-            <div class="metric">
-                <span>Role</span>
-                <strong>{currentRole}</strong>
-            </div>
-            <div class="metric">
-                <span>Plan valid until</span>
-                <strong
-                    class:metric-date={Boolean(subscription?.activeUntil)}
-                    title={subscription?.activeUntil ?? undefined}
-                    >{formatPlanExpiry(subscription?.activeUntil)}</strong
-                >
-            </div>
-            <button class="btn btn-outline compact" onclick={loadAccount}
-                >Refresh</button
-            >
-        {/if}
-    </section>
+    <AccountPanel
+        {accountLoading}
+        {accountError}
+        {subscription}
+        {tokenBalance}
+        {currentRole}
+        onRefresh={loadAccount}
+    />
 
-    <nav class="tabs">
-        {#each tabs as tab}
-            {@const disabled = tabDisabled(tab.id)}
-            <button
-                class="tab"
-                class:active={activeTab === tab.id}
-                class:disabled
-                onclick={() => selectTab(tab.id)}
-                {disabled}
-                title={disabled ? tabStatus(tab.id) : tab.label}
-            >
-                {tab.label}
-            </button>
-        {/each}
-    </nav>
+    <Tabs {tabs} {activeTab} {tabStatus} onSelect={selectTab} />
 
     {#if activeTab === "embed"}
         <section class="panel">
@@ -782,712 +625,44 @@
             </section>
         {/if}
     {:else if activeTab === "detect"}
-        <section class="panel">
-            <div class="panel-heading">
-                <h2>Detect watermark</h2>
-                <span class="cost">DETECT: {operationCost("DETECT")} token</span
-                >
-            </div>
-            {@render OperationGate("DETECT")}
-            <label class="field">
-                <span>Image</span>
-                <input
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    bind:files={detectFiles}
-                    disabled={!canUseOperation("DETECT")}
-                />
-            </label>
-            <button
-                class="btn btn-primary"
-                onclick={detectWatermark}
-                disabled={detectProcessing || !canUseOperation("DETECT")}
-            >
-                {detectProcessing ? "Checking..." : "Detect"}
-            </button>
-            {#if detectError}<div class="alert alert-error">
-                    {detectError}
-                </div>{/if}
-        </section>
-
-        {#if detectResult}
-            <section class="panel result-panel">
-                {#if detectResult.watermarked}
-                    <div class="status yes">Watermark detected</div>
-                    <div class="details">
-                        <div>
-                            <span>Owner</span><strong
-                                >{detectResult.ownerIdentity}</strong
-                            >
-                        </div>
-                        <div>
-                            <span>Payload tier</span><strong
-                                >{detectResult.lengthBits ?? "unknown"}</strong
-                            >
-                        </div>
-                    </div>
-                {:else}
-                    <div class="status no">No watermark detected</div>
-                {/if}
-            </section>
-        {/if}
+        <DetectPanel
+            processing={detectProcessing}
+            result={detectResult}
+            error={detectError}
+            status={actionStatus("DETECT")}
+            onFilesChange={(files) => (detectFiles = files)}
+            onSubmit={detectWatermark}
+        />
     {:else if activeTab === "extract"}
-        <section class="panel">
-            <div class="panel-heading">
-                <h2>Extract hidden text</h2>
-                <span class="cost"
-                    >EXTRACT: {operationCost("EXTRACT")} tokens</span
-                >
-            </div>
-            {@render OperationGate("EXTRACT")}
-            <label class="field">
-                <span>Watermarked image</span>
-                <input
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    bind:files={extractFiles}
-                    disabled={!canUseOperation("EXTRACT")}
-                />
-            </label>
-            <button
-                class="btn btn-primary"
-                onclick={extractWatermark}
-                disabled={extractProcessing || !canUseOperation("EXTRACT")}
-            >
-                {extractProcessing ? "Reading..." : "Extract"}
-            </button>
-            {#if extractNotice}<div class="alert alert-info">
-                    {extractNotice}
-                </div>{/if}
-            {#if extractError}<div class="alert alert-error">
-                    {extractError}
-                </div>{/if}
-        </section>
-
-        {#if extractResult}
-            <section class="panel result-panel">
-                <h2>Hidden text</h2>
-                <div class="details">
-                    <div>
-                        <span>Owner</span><strong
-                            >{extractResult.ownerIdentity}</strong
-                        >
-                    </div>
-                </div>
-                <pre>{extractResult.text}</pre>
-            </section>
-        {/if}
+        <ExtractPanel
+            processing={extractProcessing}
+            result={extractResult}
+            notice={extractNotice}
+            error={extractError}
+            status={actionStatus("EXTRACT")}
+            onFilesChange={(files) => (extractFiles = files)}
+            onSubmit={extractWatermark}
+        />
     {:else if activeTab === "visualize"}
-        <section class="panel">
-            <div class="panel-heading">
-                <h2>Visualize watermark footprint</h2>
-                <span class="cost"
-                    >VISUALIZE: {operationCost("VISUALIZE")} tokens</span
-                >
-            </div>
-            {@render OperationGate("VISUALIZE")}
-            <label class="field">
-                <span>Image</span>
-                <input
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    bind:files={visualizeFiles}
-                    disabled={!canUseOperation("VISUALIZE")}
-                />
-            </label>
-            <button
-                class="btn btn-primary"
-                onclick={visualizeWatermark}
-                disabled={visualizeProcessing || !canUseOperation("VISUALIZE")}
-            >
-                {visualizeProcessing ? "Rendering..." : "Visualize"}
-            </button>
-            {#if visualizeError}<div class="alert alert-error">
-                    {visualizeError}
-                </div>{/if}
-        </section>
-
-        {#if visualizeImageUrl}
-            <section class="panel result-panel">
-                <h2>Visualization</h2>
-                <div class="image-frame">
-                    <img
-                        src={visualizeImageUrl}
-                        alt="Watermark visualization"
-                    />
-                </div>
-                <a
-                    href={visualizeImageUrl}
-                    download="watermark_visualization.png"
-                    class="download-link"
-                >
-                    <button class="btn btn-success"
-                        >Download visualization</button
-                    >
-                </a>
-            </section>
-        {/if}
+        <VisualizePanel
+            processing={visualizeProcessing}
+            imageUrl={visualizeImageUrl}
+            error={visualizeError}
+            status={actionStatus("VISUALIZE")}
+            onFilesChange={(files) => (visualizeFiles = files)}
+            onSubmit={visualizeWatermark}
+        />
     {:else if activeTab === "pricing"}
-        <section class="panel">
-            <h2>Subscription plans</h2>
-            <div class="plans-grid">
-                {#each plans as plan}
-                    <div
-                        class="plan-card"
-                        class:current={subscription?.planCode === plan.code}
-                    >
-                        <h3>{plan.code}</h3>
-                        <p class="plan-tokens">
-                            <strong>{plan.monthlyTokens}</strong> tokens / month
-                        </p>
-                        <ul class="plan-ops">
-                            {#each plan.allowedOperations as op}
-                                <li>{operationName(op)}</li>
-                            {/each}
-                        </ul>
-                        {#if subscription?.planCode === plan.code}
-                            <button class="btn btn-outline" disabled
-                                >Current plan</button
-                            >
-                        {:else if canUpgradeTo(plan.code)}
-                            <button
-                                class="btn btn-primary"
-                                onclick={() => initiatePayment(plan.code)}
-                                disabled={paymentProcessing}
-                            >
-                                Upgrade to {plan.code}
-                            </button>
-                        {:else}
-                            <button class="btn btn-outline" disabled
-                                >Downgrade unavailable</button
-                            >
-                        {/if}
-                    </div>
-                {/each}
-            </div>
-
-            {#if paymentSession}
-                <div
-                    class="payment-session-status"
-                    class:pending={paymentSession.status === "PENDING"}
-                >
-                    <div class="panel">
-                        <h3>Mock Payment Session</h3>
-                        <p>
-                            Target Plan: <strong
-                                >{paymentSession.targetPlan}</strong
-                            >
-                        </p>
-                        <p>
-                            Status: <strong
-                                class="status-tag"
-                                class:status-pending={paymentSession.status ===
-                                    "PENDING"}>{paymentSession.status}</strong
-                            >
-                        </p>
-
-                        {#if paymentSession.status === "PENDING"}
-                            <div class="payment-actions">
-                                <button
-                                    class="btn btn-success"
-                                    onclick={() => completePayment("succeed")}
-                                    disabled={paymentProcessing}
-                                >
-                                    {paymentProcessing
-                                        ? "Processing..."
-                                        : "Simulate Success"}
-                                </button>
-                                <button
-                                    class="btn btn-error"
-                                    onclick={() => completePayment("fail")}
-                                    disabled={paymentProcessing}
-                                >
-                                    Simulate Failure
-                                </button>
-                                <button
-                                    class="btn btn-outline"
-                                    onclick={() => completePayment("cancel")}
-                                    disabled={paymentProcessing}
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        {:else}
-                            <div class="notice">
-                                Session finished. You can now close this or
-                                start a new upgrade.
-                                <button
-                                    class="btn btn-outline compact"
-                                    onclick={() => (paymentSession = null)}
-                                    >Dismiss</button
-                                >
-                            </div>
-                        {/if}
-                    </div>
-                </div>
-            {/if}
-
-            {#if paymentError}
-                <div class="alert alert-error">{paymentError}</div>
-            {/if}
-        </section>
+        <PricingPanel
+            {plans}
+            {subscription}
+            {paymentSession}
+            {paymentProcessing}
+            {paymentError}
+            {canUpgradeTo}
+            onInitiatePayment={initiatePayment}
+            onCompletePayment={completePayment}
+            onDismissPayment={() => (paymentSession = null)}
+        />
     {/if}
 </main>
-
-{#snippet OperationGate(operation)}
-    {@const status = actionStatus(operation)}
-    {#if status}
-        <div class="alert alert-warning">{status}</div>
-    {:else}
-        <div class="notice">
-            {operationName(operation)} is available for your plan.
-        </div>
-    {/if}
-{/snippet}
-
-<style>
-    :global(body) {
-        margin: 0;
-        background: #f3f5f7;
-        color: #1f2933;
-        font-family:
-            Inter,
-            -apple-system,
-            BlinkMacSystemFont,
-            "Segoe UI",
-            sans-serif;
-    }
-
-    .container {
-        max-width: 980px;
-        margin: 0 auto;
-        padding: 32px 20px 48px;
-    }
-
-    .topbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 16px;
-        margin-bottom: 20px;
-    }
-
-    h1,
-    h2 {
-        margin: 0;
-        color: #172033;
-    }
-
-    h1 {
-        font-size: 1.8rem;
-    }
-
-    h2 {
-        font-size: 1.25rem;
-    }
-
-    p {
-        margin: 6px 0 0;
-        color: #667085;
-    }
-
-    .account-panel {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(110px, 1fr)) auto;
-        gap: 10px;
-        align-items: stretch;
-        margin-bottom: 18px;
-    }
-
-    .metric,
-    .panel,
-    .tab {
-        background: #fff;
-        border: 1px solid #d9e2ec;
-        border-radius: 8px;
-    }
-
-    .metric {
-        padding: 12px 14px;
-    }
-
-    .metric span,
-    .details span,
-    .capacity-grid span {
-        display: block;
-        color: #667085;
-        font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-    }
-
-    .metric strong {
-        display: block;
-        margin-top: 4px;
-        font-size: 1.2rem;
-    }
-
-    .metric strong.metric-date {
-        font-size: 0.95rem;
-    }
-
-    .tabs {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 8px;
-        margin-bottom: 18px;
-    }
-
-    .tab {
-        padding: 12px 10px;
-        color: #344054;
-        font-weight: 700;
-        cursor: pointer;
-    }
-
-    .tab.active {
-        background: #2563eb;
-        border-color: #2563eb;
-        color: #fff;
-    }
-
-    .tab:disabled {
-        background: #eef2f6;
-        color: #98a2b3;
-        cursor: not-allowed;
-    }
-
-    .tab.active:disabled {
-        background: #98a2b3;
-        border-color: #98a2b3;
-        color: #fff;
-    }
-
-    .panel {
-        padding: 22px;
-        margin-bottom: 18px;
-    }
-
-    .panel-heading {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 18px;
-    }
-
-    .cost {
-        color: #155e75;
-        background: #ecfeff;
-        border: 1px solid #a5f3fc;
-        border-radius: 999px;
-        padding: 5px 10px;
-        font-size: 0.84rem;
-        font-weight: 700;
-        white-space: nowrap;
-    }
-
-    .field {
-        display: grid;
-        gap: 8px;
-        margin-bottom: 16px;
-        font-weight: 700;
-    }
-
-    .field span {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-    }
-
-    input[type="text"],
-    input[type="file"] {
-        border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        background: #f8fafc;
-        padding: 12px 14px;
-        font-size: 1rem;
-    }
-
-    input[type="text"]:focus {
-        outline: none;
-        border-color: #2563eb;
-        background: #fff;
-    }
-
-    input:disabled {
-        background: #eef2f6;
-        color: #98a2b3;
-        cursor: not-allowed;
-    }
-
-    .btn {
-        border: 0;
-        border-radius: 8px;
-        padding: 11px 16px;
-        font-weight: 800;
-        cursor: pointer;
-    }
-
-    .btn-primary,
-    .btn-success {
-        width: 100%;
-        color: #fff;
-    }
-
-    .btn-primary {
-        background: #2563eb;
-    }
-
-    .btn-success {
-        background: #16803c;
-    }
-
-    .btn-outline {
-        background: #fff;
-        color: #344054;
-        border: 1px solid #cbd5e1;
-    }
-
-    .compact {
-        width: auto;
-        align-self: center;
-    }
-
-    .btn:disabled {
-        background: #98a2b3;
-        cursor: not-allowed;
-    }
-
-    .alert,
-    .notice {
-        border-radius: 8px;
-        padding: 11px 13px;
-        margin: 12px 0;
-        font-size: 0.93rem;
-    }
-
-    .notice {
-        background: #f8fafc;
-        border: 1px solid #d9e2ec;
-        color: #475467;
-    }
-
-    .alert-error {
-        background: #fff1f2;
-        border: 1px solid #fecdd3;
-        color: #be123c;
-    }
-
-    .alert-warning {
-        background: #fffbeb;
-        border: 1px solid #fde68a;
-        color: #92400e;
-    }
-
-    .alert-info {
-        background: #eff6ff;
-        border: 1px solid #bfdbfe;
-        color: #1d4ed8;
-    }
-
-    .capacity-grid,
-    .details {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 10px;
-        margin-bottom: 12px;
-    }
-
-    .capacity-grid div,
-    .details div {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 10px;
-    }
-
-    .capacity-grid div.blocked {
-        background: #fff7ed;
-        border-color: #fdba74;
-    }
-
-    .capacity-grid div.blocked strong {
-        color: #9a3412;
-    }
-
-    small {
-        color: #667085;
-        font-weight: 700;
-    }
-
-    small.over {
-        color: #be123c;
-    }
-
-    .result-panel {
-        text-align: center;
-    }
-
-    .image-frame {
-        margin: 16px 0;
-        border: 1px dashed #cbd5e1;
-        border-radius: 8px;
-        padding: 10px;
-        background: #f8fafc;
-    }
-
-    .image-frame img {
-        display: block;
-        max-width: 100%;
-        height: auto;
-        margin: 0 auto;
-        border-radius: 4px;
-    }
-
-    .download-link {
-        text-decoration: none;
-    }
-
-    .status {
-        display: inline-block;
-        border-radius: 999px;
-        padding: 9px 16px;
-        font-weight: 800;
-        margin-bottom: 12px;
-    }
-
-    .status.yes {
-        background: #dcfce7;
-        color: #166534;
-    }
-
-    .status.no {
-        background: #fee2e2;
-        color: #991b1b;
-    }
-
-    pre {
-        text-align: left;
-        white-space: pre-wrap;
-        word-break: break-word;
-        background: #0f172a;
-        color: #e2e8f0;
-        border-radius: 8px;
-        padding: 16px;
-    }
-
-    .plans-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-        margin-top: 16px;
-    }
-
-    .plan-card {
-        border: 1px solid #d9e2ec;
-        border-radius: 8px;
-        padding: 20px;
-        background: #fff;
-        display: flex;
-        flex-direction: column;
-        transition:
-            transform 0.2s,
-            border-color 0.2s;
-    }
-
-    .plan-card.current {
-        border-color: #2563eb;
-        background: #eff6ff;
-        transform: scale(1.02);
-    }
-
-    .plan-card h3 {
-        margin: 0 0 10px;
-        font-size: 1.4rem;
-        color: #172033;
-    }
-
-    .plan-tokens {
-        font-size: 1.1rem;
-        margin-bottom: 16px;
-        color: #475467;
-    }
-
-    .plan-ops {
-        margin: 0 0 20px;
-        padding: 0;
-        list-style: none;
-        flex-grow: 1;
-    }
-
-    .plan-ops li {
-        padding: 4px 0;
-        font-size: 0.9rem;
-        color: #667085;
-    }
-
-    .plan-ops li::before {
-        content: "✓";
-        color: #16a34a;
-        margin-right: 8px;
-        font-weight: bold;
-    }
-
-    .payment-session-status {
-        margin-top: 24px;
-        border-top: 2px dashed #d9e2ec;
-        padding-top: 24px;
-    }
-
-    .payment-session-status.pending .panel {
-        border-color: #2563eb;
-        background: #f8fafc;
-    }
-
-    .payment-actions {
-        display: flex;
-        gap: 12px;
-        margin-top: 16px;
-    }
-
-    .btn-error {
-        background: #dc2626;
-        color: #fff;
-        width: 100%;
-    }
-
-    .status-tag {
-        display: inline-block;
-        padding: 4px 8px;
-        border-radius: 4px;
-        background: #e2e8f0;
-        color: #475467;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-    }
-
-    .status-pending {
-        background: #fef3c7;
-        color: #92400e;
-    }
-
-    @media (max-width: 760px) {
-        .topbar,
-        .panel-heading {
-            flex-direction: column;
-            align-items: stretch;
-        }
-
-        .account-panel,
-        .tabs,
-        .capacity-grid,
-        .details {
-            grid-template-columns: 1fr;
-        }
-
-        .compact {
-            width: 100%;
-        }
-    }
-</style>
