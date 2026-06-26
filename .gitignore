@@ -2,6 +2,10 @@
 
 docs/superpowers/
 
+# IDE-local project files
+.idea/
+*.iml
+
 # Python
 **/.venv/
 **/venv/
