@@ -224,6 +224,7 @@ services:
       - .env
     environment:
       SONAR_HOST_URL: http://sonarqube:9000
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
     command:
       - /bin/sh
       - -lc
