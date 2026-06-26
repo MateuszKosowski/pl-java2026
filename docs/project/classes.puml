@@ -1,4 +1,5 @@
 @startuml
+skinparam dpi 150
 skinparam class {
   BackgroundColor LightYellow
   BorderColor Orange
