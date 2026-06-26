@@ -1,51 +1,66 @@
 # StegoCloud
 
-## Spis treści
-- [Członkowie grupy](#czlonkowie-grupy)
-- [Opis projektu](#opis-projektu)
-- [Architektura](#architektura)
-- [Główne zasady biznesowe](#glowne-zasady-biznesowe)
-- [Mechanizmy Javy 21](#mechanizmy-javy-21)
-- [Konta demo](#konta-demo)
-- [Konfiguracja](#konfiguracja)
-- [Uruchomienie](#uruchomienie)
-- [Linki](#linki)
-- [Dokumentacja API (OpenAPI)](#dokumentacja-api-openapi)
-- [Przydatne endpointy](#przydatne-endpointy)
-- [SonarQube](#sonarqube)
-- [Uwagi techniczne](#uwagi-techniczne)
+StegoCloud is a microservice system for embedding, detecting and extracting encrypted watermarks in PNG images. It combines a Java/Spring Boot backend, a Python/FastAPI watermarking engine and a Svelte frontend into one Docker Compose environment.
 
-## Czlonkowie grupy
+The project focuses on a practical business flow: users have subscription plans, operations consume tokens, and watermarking requests are authorized, validated and billed before the image is processed.
 
-251558, 251554, 251598, 251620, 251606, 247774
+## Highlights
 
-## Opis projektu
+- Microservice architecture with Spring Cloud Config and Eureka service discovery.
+- JWT-based authentication and role-aware access to watermark operations.
+- Subscription and token economy with reservation, consumption and release flows.
+- Encrypted watermark payloads using AES-GCM before embedding.
+- Python/FastAPI service for PNG watermarking, detection, extraction and visualization.
+- Java 21 features, including records, sealed interfaces and pattern matching for switch.
+- OpenAPI documentation for the public API surface.
+- Automated tests covering Java services and the Python watermarking service.
+- Docker Compose setup for local end-to-end runs.
 
-StegoCloud to system mikroserwisowy do ukrywania i odczytywania zaszyfrowanych znakow wodnych w obrazach PNG. Projekt jest poliglotyczny: uslugi infrastrukturalne, autoryzacja, subskrypcje, tokeny i klasyfikacja AI sa zaimplementowane w Javie/Spring Boot, a wlasciwy silnik watermarkingu dziala jako osobny serwis Python/FastAPI.
+## Tech Stack
 
-Watermark jest szyfrowany z uzyciem AES-GCM, a nastepnie osadzany w obrazie PNG. Operacje watermarkingu sa kontrolowane przez system subskrypcji i tokenow.
+| Area | Technologies |
+|---|---|
+| Backend | Java 21, Spring Boot, Spring Security, Spring Cloud Config, Eureka, OpenFeign |
+| Data | PostgreSQL, Flyway, JPA/Hibernate |
+| Watermarking | Python, FastAPI, AES-GCM, Reed-Solomon ECC, invisible-watermark |
+| AI | ONNX Runtime, MobileNetV2 image classification |
+| Frontend | Svelte, Vite, nginx |
+| Quality | JUnit 5, Cucumber, ArchUnit, Spring Cloud Contract, pytest, Checkstyle, Spotless, JaCoCo, SonarQube |
+| Delivery | Docker, Docker Compose, GitHub Actions |
 
-## Architektura
+## Modules
 
-| Modul | Technologia | Odpowiedzialnosc |
-|---|---|---|
-| `auth-server` | Java 21 / Spring Boot | logowanie, role uzytkownikow, wystawianie JWT |
-| `subscription-service` | Java 21 / Spring Boot | plany subskrypcji, saldo tokenow, rezerwacje i zuzycie tokenow |
-| `config-server` | Java 21 / Spring Cloud Config | centralna konfiguracja mikroserwisow |
-| `eureka-server` | Java 21 / Spring Cloud Netflix Eureka | service discovery |
-| `ai-service` | Java 21 / Spring Boot / ONNX Runtime | klasyfikacja obrazow modelem MobileNetV2 |
-| `watermark-service-py` | Python / FastAPI | silnik PNG watermarkingu, szyfrowanie, embed/detect/extract/visualize |
-| `gui` | Svelte / nginx | interfejs uzytkownika |
-| `postgres-db` | PostgreSQL | baza danych dla `auth-server` i `subscription-service` |
-| `sonarqube` | SonarQube | analiza jakosci kodu |
+| Module | Responsibility |
+|---|---|
+| `auth-server` | User registration, login, roles and JWT validation |
+| `subscription-service` | Subscription plans, token balances, payments and token reservations |
+| `config-server` | Central configuration for Spring services |
+| `eureka-server` | Service discovery |
+| `ai-service` | Image classification with MobileNetV2 via ONNX Runtime |
+| `watermark-service-py` | PNG watermark embed, detect, extract, visualize and capacity checks |
+| `gui` | User interface for authentication, subscriptions and watermark operations |
+| `postgres-db` | Shared PostgreSQL instance for auth and subscription schemas |
 
-Pythonowy `watermark-service-py` jest runtime'owym serwisem watermarkingu i w Docker Compose wystepuje jako `watermark-service`. Rejestruje sie w Eurece pod logiczna nazwa `WATERMARK-SERVICE`.
+## Core Flow
 
-## Glowne zasady biznesowe
+1. The user logs in through `auth-server` and receives a JWT.
+2. The GUI sends a watermark request to `watermark-service-py`.
+3. The watermark service validates the JWT and checks the user's subscription state.
+4. Paid operations reserve tokens in `subscription-service`.
+5. The watermark service processes the image and optionally calls `ai-service`.
+6. On success the reservation is consumed; on failure it is released.
 
-System uzywa planow subskrypcji i tokenow. Kazda platna operacja najpierw rezerwuje tokeny w `subscription-service`. Po sukcesie tokeny sa zuzywane, a po bledzie rezerwacja jest zwalniana.
+## Business Rules
 
-| Operacja | Koszt |
+System plans define which operations a user can run and how many tokens they receive.
+
+| Plan | Monthly tokens | Allowed operations |
+|---|---:|---|
+| `FREE` | 50 | `CAPACITY_CHECK`, `DETECT`, `EMBED_768` |
+| `STANDARD` | 500 | `CAPACITY_CHECK`, `DETECT`, `EXTRACT`, `VISUALIZE`, `EMBED_768`, `EMBED_1024` |
+| `PRO` | 2500 | All operations, including `AI_CLASSIFICATION` |
+
+| Operation | Cost |
 |---|---:|
 | `CAPACITY_CHECK` | 0 |
 | `DETECT` | 1 |
@@ -55,166 +70,110 @@ System uzywa planow subskrypcji i tokenow. Kazda platna operacja najpierw rezerw
 | `EMBED_1024` | 8 |
 | `AI_CLASSIFICATION` | 2 |
 
-| Plan | Tokeny / miesiac | Dozwolone operacje |
-|---|---:|---|
-| `FREE` | 50 | `CAPACITY_CHECK`, `DETECT`, `EMBED_768` |
-| `STANDARD` | 500 | `CAPACITY_CHECK`, `DETECT`, `EXTRACT`, `VISUALIZE`, `EMBED_768`, `EMBED_1024` |
-| `PRO` | 2500 | wszystkie operacje, wlacznie z `AI_CLASSIFICATION` |
+Additional rules:
 
-Cykl zycia subskrypcji:
+- Upgrades are allowed from `FREE` to `STANDARD`, `FREE` to `PRO` and `STANDARD` to `PRO`.
+- Downgrades and duplicate purchases of the active plan are blocked.
+- Paid plans are valid for one month from purchase or upgrade.
+- Expired plans return to `FREE` with a reset token balance.
+- Regular users can extract only their own watermarks.
+- Administrators can detect, extract and visualize watermarks for any image.
 
-- dozwolone sa wylacznie przejscia `FREE -> STANDARD`, `FREE -> PRO` i `STANDARD -> PRO`,
-- downgrade oraz ponowny zakup aktywnego planu sa blokowane po stronie backendu,
-- platny plan jest wazny przez jeden miesiac od daty zakupu lub upgrade'u,
-- upgrade rozpoczyna nowy miesieczny okres i dodaje pelna pule tokenow nowego planu do aktualnego salda,
-- po wygasnieciu plan wraca do `FREE`, a saldo jest resetowane do 50 tokenow,
-- rezerwacje rozpoczete przed wygasnieciem moga zostac rozliczone, ale wygasly plan nie pozwala rozpoczynac nowych operacji,
-- finalizacja platnosci jest idempotentna i wymaga wlasciciela danej sesji platniczej.
+## Watermarking Constraints
 
-Zasady watermarkingu:
+- Embed accepts PNG images only.
+- Minimum image size for embedding is `1024x1024`.
+- Images up to Full HD pixel count (`1920 * 1080`) use the `EMBED_768` tier.
+- Larger images use the `EMBED_1024` tier.
+- The GUI accepts images up to 20 MB.
+- The output should remain PNG and should not be recompressed, resized or screenshotted if the watermark must survive.
 
-- embed przyjmuje tylko obrazy PNG,
-- minimalny rozmiar obrazu do embedowania to `1024x1024`,
-- obrazy do limitu Full HD pixel count (`1920 * 1080`) uzywaja tieru `EMBED_768`,
-- obrazy powyzej tego limitu uzywaja tieru `EMBED_1024`,
-- klasyfikacja AI jest opcjonalna i wykonywana tylko wtedy, gdy plan oraz saldo tokenow na to pozwalaja,
-- zwykly uzytkownik moze odczytywac tylko swoje watermarki,
-- administrator moze wykonywac detect/extract/visualize dla kazdego obrazu.
-- GUI przyjmuje obrazy o maksymalnym rozmiarze 20 MB i pokazuje date waznosci aktywnego planu.
+## Quick Start
 
-## Mechanizmy Javy 21
-
-W projekcie wykorzystano m.in.:
-
-- `record` jako DTO i niemutowalne obiekty domenowe,
-- `sealed interface` do modelowania decyzji rezerwacji tokenow,
-- pattern matching for `switch` do obslugi wszystkich wariantow decyzji tokenowej,
-- konfiguracje przez `@ConfigurationProperties`,
-- Spring Cloud Config, Eureka, Spring Security, Flyway i Actuator.
-
-## Konta demo
-
-| Login | Haslo | Rola | Plan |
-|---|---|---|---|
-| `admin@gmail.com` | `admin` | `ADMIN` | `PRO` |
-| `free@gmail.com` | `free` | `USER` | `FREE` |
-| `standard@gmail.com` | `standard` | `USER` | `STANDARD` |
-| `pro@gmail.com` | `pro` | `USER` | `PRO` |
-| `lowbalance@gmail.com` | `lowbalance` | `USER` | `FREE`, niskie saldo tokenow |
-
-## Konfiguracja
-
-Przed uruchomieniem nalezy przygotowac plik `.env`. Najprosciej skopiowac `.env.example`:
+Create a local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Przykladowe wymagane zmienne:
-
-```env
-JWT_SECRET_KEY=...
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=stego_cloud
-WATERMARK_APP_KEY=...
-CONFIG_SERVER_USER=admin
-CONFIG_SERVER_PASSWORD=admin
-EUREKA_USER=admin
-EUREKA_PASSWORD=admin
-SONARQUBE_TOKEN=...
-```
-
-Konfiguracje mikroserwisow sa pobierane przez Spring Cloud Config.
-
-Repozytorium z configami:
-
-```text
-https://github.com/bkolacinski/pl-java2026-config.git
-```
-
-Po zmianie nazwy repozytorium configow nalezy zaktualizowac `spring.cloud.config.server.git.uri` w `config-server/src/main/resources/application.yaml`.
-
-## Uruchomienie
-
-Zbudowanie i uruchomienie wszystkich podstawowych uslug:
+Start the full system:
 
 ```bash
 docker compose up -d --build
 ```
 
-Uruchomienie bez przebudowywania obrazow:
+Open the application:
 
-```bash
-docker compose up -d
+```text
+http://localhost:5173
 ```
 
-Przebudowanie tylko frontendu:
-
-```bash
-docker compose up -d --build gui
-```
-
-Przebudowanie tylko Pythonowego watermark-service:
-
-```bash
-docker compose build --pull --no-cache watermark-service
-docker compose up -d watermark-service
-```
-
-Zatrzymanie systemu:
+Stop the system:
 
 ```bash
 docker compose down
 ```
 
-Wyczyszczenie kontenerow razem z wolumenami baz danych:
+Remove containers and database volumes:
 
 ```bash
 docker compose down -v
 ```
 
-## Linki
+## Demo Accounts
 
-| Usluga | URL |
+| Login | Password | Role | Plan |
+|---|---|---|---|
+| `admin@gmail.com` | `admin` | `ADMIN` | `PRO` |
+| `free@gmail.com` | `free` | `USER` | `FREE` |
+| `standard@gmail.com` | `standard` | `USER` | `STANDARD` |
+| `pro@gmail.com` | `pro` | `USER` | `PRO` |
+| `lowbalance@gmail.com` | `lowbalance` | `USER` | `FREE`, low token balance |
+
+## Local URLs
+
+| Service | URL |
 |---|---|
 | GUI | http://localhost:5173 |
 | Eureka | http://localhost:8761 |
 | Config Server | http://localhost:8888/application/default |
 | Auth Server | http://localhost:8081 |
 | Subscription Service | http://localhost:8085 |
-| Watermark Service Python/FastAPI | http://localhost:8082 |
+| Watermark Service | http://localhost:8082 |
 | AI Service | http://localhost:8084 |
 | SonarQube | http://localhost:9000 |
 | PostgreSQL host port | `localhost:5433` |
 
-## Dokumentacja API (OpenAPI)
+## API Documentation
 
-### Referencja endpointów (Markdown)
-Pełna, źródłowo zweryfikowana dokumentacja wszystkich endpointów znajduje się w katalogu [`docs/api/`](docs/api/README.md):
-- [Przegląd, routing, model auth i ekonomia tokenów](docs/api/README.md)
-- [auth-server](docs/api/auth-server.md) · [subscription-service](docs/api/subscription-service.md) · [ai-service](docs/api/ai-service.md) · [watermark-service](docs/api/watermark-service.md) · [infrastruktura](docs/api/infrastructure.md)
+The consolidated OpenAPI specification is available in:
 
-### Skonsolidowana dokumentacja
-W głównym katalogu znajduje się plik `stegocloud-openapi.json` (połączone API wszystkich serwisów) oraz `api-docs.html` (interaktywny viewer).
+- [`stegocloud-openapi.json`](stegocloud-openapi.json)
+- [`api-docs.html`](api-docs.html)
+- [`docs/api/`](docs/api/README.md)
 
-Ze względu na zabezpieczenia przeglądarek (CORS), plik `api-docs.html` musi być uruchomiony przez serwer HTTP.
+Because browsers block local file requests, serve the API viewer through a local HTTP server:
 
-**Szybkie uruchomienie (Python):**
 ```bash
 python3 -m http.server 8000
 ```
-Następnie otwórz: [http://localhost:8000/api-docs.html](http://localhost:8000/api-docs.html)
 
-### Dokumentacja poszczególnych serwisów
-| Usluga | URL |
+Then open:
+
+```text
+http://localhost:8000/api-docs.html
+```
+
+Service-specific API docs:
+
+| Service | URL |
 |---|---|
 | Auth Server | http://localhost:8081/swagger-ui/index.html |
 | Subscription Service | http://localhost:8085/swagger-ui/index.html |
 | AI Service | http://localhost:8084/swagger-ui/index.html |
 | Watermark Service | http://localhost:8082/docs |
 
-## Przydatne endpointy
+## Useful Endpoints
 
 Auth:
 
@@ -238,8 +197,6 @@ POST /api/tokens/reservations/{reservationId}/consume
 POST /api/tokens/reservations/{reservationId}/release
 ```
 
-> **Znany problem:** endpointy `/api/tokens/reservations*` nie są obecnie zarejestrowane (klasa `TokenReservationController` nie ma adnotacji `@RestController`/`@RequestMapping`), więc zwracają **404** i blokują płatne operacje watermarku. Szczegóły i poprawka: [docs/api/subscription-service.md](docs/api/subscription-service.md#token-reservation).
-
 Watermark:
 
 ```http
@@ -251,28 +208,63 @@ POST /api/watermark/visualize
 GET  /health
 ```
 
+## Development
+
+Run Java tests:
+
+```bash
+./gradlew test
+```
+
+Run Java formatting and static checks:
+
+```bash
+./gradlew spotlessCheck checkstyleMain checkstyleTest
+```
+
+Run Python watermark-service tests:
+
+```bash
+cd watermark-service-py
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pytest -v
+```
+
+Run frontend checks:
+
+```bash
+cd gui
+npm install
+npm run check
+npm run build
+```
+
 ## SonarQube
 
-Domyslne dane logowania:
+Default local credentials:
 
 ```text
 login: admin
 password: admin
 ```
 
-Po pierwszym logowaniu nalezy zmienic haslo, wygenerowac User Token i wpisac go do `.env` jako `SONARQUBE_TOKEN`.
+After the first login, change the password, generate a user token and put it in `.env` as `SONARQUBE_TOKEN`.
 
-Analiza modulow Java:
+Run Java analysis:
 
 ```bash
 docker compose --profile tools run --rm sonar-scan
 ```
 
-## Uwagi techniczne
+## Documentation
 
-- `watermark-service-py` jest serwisem wykonawczym dla watermarkingu, ale decyzje o planach i tokenach podejmuje `subscription-service`.
-- `ai-service` korzysta z ONNX Runtime i modelu MobileNetV2.
-- `subscription-service` uzywa osobnego schematu `subscription_schema`.
-- `auth-server` uzywa schematu `auth_schema`.
-- Oba serwisy korzystaja z tej samej instancji PostgreSQL w Docker Compose.
-- Stary Java `watermark-service` nie jest juz czescia aktywnego builda.
+- API reference: [`docs/api/`](docs/api/README.md)
+- Project PDF documentation: [`docs/project/project-report.pdf`](docs/project/project-report.pdf)
+- Project report sources, diagrams and screenshots: [`docs/project/`](docs/project/)
+- Python watermark service details: [`watermark-service-py/README.md`](watermark-service-py/README.md)
+
+## Team
+
+251558, 251554, 251598, 251620, 251606, 247774

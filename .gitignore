@@ -2,6 +2,10 @@
 
 docs/superpowers/
 
+# IDE-local project files
+.idea/
+*.iml
+
 # Python
 **/.venv/
 **/venv/
@@ -12,6 +16,12 @@ docs/superpowers/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# LaTeX build artifacts
+*.aux
+*.out
+*.toc
+*.synctex.gz
 
 # Created by https://www.toptal.com/developers/gitignore/api/linux,windows,java,gradle,intellij,visualstudiocode,netbeans
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,windows,java,gradle,intellij,visualstudiocode,netbeans
