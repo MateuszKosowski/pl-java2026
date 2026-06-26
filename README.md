@@ -261,8 +261,8 @@ docker compose --profile tools run --rm sonar-scan
 ## Documentation
 
 - API reference: [`docs/api/`](docs/api/README.md)
-- Project PDF documentation: [`dokumentacja/dokumentacja.pdf`](dokumentacja/dokumentacja.pdf)
-- PlantUML diagrams: [`dokumentacja/`](dokumentacja/)
+- Project PDF documentation: [`docs/project/project-report.pdf`](docs/project/project-report.pdf)
+- Project report sources, diagrams and screenshots: [`docs/project/`](docs/project/)
 - Python watermark service details: [`watermark-service-py/README.md`](watermark-service-py/README.md)
 
 ## Team
